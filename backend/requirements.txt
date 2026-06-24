@@ -6,3 +6,4 @@ anthropic
 python-dotenv
 h3
 requests
+psycopg2-binary

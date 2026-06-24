@@ -103,12 +103,17 @@ export default function MapView({ properties, selected, onSelect, visible }: Pro
 
   const indexed = useMemo(() => properties.filter((p) => p.h3_7 || p.h3_index), [properties]);
 
-  // Load demographic batch data when overlay is switched to a demo mode
+  const demoFetchedRef = useRef(false);
+
+  // Load demographic batch data once, the first time the user switches away from score overlay.
+  // demoData is intentionally excluded from deps — including it caused an infinite loop because
+  // setDemoData triggers the effect again before the non-empty check can gate it.
   useEffect(() => {
-    if (overlay !== "score" && Object.keys(demoData).length === 0) {
+    if (overlay !== "score" && !demoFetchedRef.current) {
+      demoFetchedRef.current = true;
       fetchDemographicsBatch().then(setDemoData);
     }
-  }, [overlay, demoData]);
+  }, [overlay]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load amenities when the toggle is turned on
   useEffect(() => {
@@ -302,9 +307,6 @@ export default function MapView({ properties, selected, onSelect, visible }: Pro
 
   useEffect(() => {
     applyHighlight(selected?.id ?? null);
-    if (selected?.lat && selected?.lng && mapRef.current) {
-      mapRef.current.flyTo([selected.lat, selected.lng], 13, { duration: 0.8 });
-    }
   }, [selected, applyHighlight]);
 
   // ── UI ─────────────────────────────────────────────────────────────────────

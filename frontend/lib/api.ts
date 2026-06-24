@@ -52,7 +52,7 @@ export interface PropertiesResponse {
 }
 
 export async function fetchProperties(limit = 10000): Promise<PropertiesResponse> {
-  const res = await fetch(`${BASE}/api/v1/properties?limit=${limit}`);
+  const res = await fetch(`/api/properties?limit=${limit}`);
   if (!res.ok) throw new Error("Failed to fetch properties");
   return res.json();
 }
