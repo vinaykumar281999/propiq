@@ -37,7 +37,7 @@ export default function Home() {
       setProperties([...props].sort((a, b) => a.name.localeCompare(b.name)));
       setMetros(metroList);
     } catch {
-      setError("Cannot reach backend at http://localhost:8000. Is it running?");
+      setError("Failed to load property data. Please try refreshing the page.");
     } finally {
       setLoading(false);
     }

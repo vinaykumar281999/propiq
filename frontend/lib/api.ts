@@ -1,5 +1,3 @@
-const BASE = "http://localhost:8000";
-
 export interface Property {
   id: number;
   name: string;
@@ -58,24 +56,14 @@ export async function fetchProperties(limit = 10000): Promise<PropertiesResponse
 }
 
 export async function fetchMetros(): Promise<string[]> {
-  const res = await fetch(`${BASE}/api/v1/metros`);
+  const res = await fetch(`/api/metros`);
   if (!res.ok) throw new Error("Failed to fetch metros");
   const data = await res.json();
   return data.metros as string[];
 }
 
-export async function loadData(source: "neighborhoods" | "cities" = "neighborhoods") {
-  const res = await fetch(`${BASE}/api/v1/load`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ source }),
-  });
-  if (!res.ok) throw new Error("Failed to load data");
-  return res.json();
-}
-
 export async function askAdvisor(question: string, includeContext = true): Promise<string> {
-  const res = await fetch(`${BASE}/api/v1/ask`, {
+  const res = await fetch(`/api/ask`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ question, include_context: includeContext }),
@@ -94,7 +82,7 @@ export async function fetchAmenities(
   radiusKm = 2.0,
 ): Promise<Amenity[]> {
   const res = await fetch(
-    `${BASE}/api/v1/amenities?lat=${lat}&lng=${lng}&type=${type}&radius_km=${radiusKm}`,
+    `/api/amenities?lat=${lat}&lng=${lng}&type=${type}&radius_km=${radiusKm}`,
   );
   if (!res.ok) return [];
   const data = await res.json();
@@ -107,7 +95,7 @@ export async function fetchAmenitiesInBounds(
   types = "gas_station,school,hospital",
 ): Promise<Amenity[]> {
   const url =
-    `${BASE}/api/v1/amenities/all` +
+    `/api/amenities/all` +
     `?sw_lat=${swLat}&sw_lng=${swLng}&ne_lat=${neLat}&ne_lng=${neLng}&types=${encodeURIComponent(types)}`;
   try {
     const res = await fetch(url);
@@ -126,7 +114,7 @@ export async function fetchDemographics(
 ): Promise<DemographicsResponse | null> {
   try {
     const res = await fetch(
-      `${BASE}/api/v1/demographics?neighborhood=${encodeURIComponent(neighborhood)}`,
+      `/api/demographics?neighborhood=${encodeURIComponent(neighborhood)}`,
     );
     if (!res.ok) return null;
     return res.json();
@@ -137,7 +125,7 @@ export async function fetchDemographics(
 
 export async function fetchDemographicsBatch(): Promise<Record<string, DemographicsData>> {
   try {
-    const res = await fetch(`${BASE}/api/v1/demographics/batch`);
+    const res = await fetch(`/api/demographics/batch`);
     if (!res.ok) return {};
     const data = await res.json();
     return data.demographics as Record<string, DemographicsData>;
@@ -154,7 +142,7 @@ export async function fetchH3Neighbors(
 ): Promise<{ cells: string[]; neighborhoods: Property[] }> {
   try {
     const res = await fetch(
-      `${BASE}/api/v1/h3/neighbors?h3_index=${h3Index}&rings=${rings}`,
+      `/api/h3/neighbors?h3_index=${h3Index}&rings=${rings}`,
     );
     if (!res.ok) return { cells: [], neighborhoods: [] };
     return res.json();
