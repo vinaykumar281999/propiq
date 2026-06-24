@@ -1,11 +1,12 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   fetchProperties, fetchMetros, Property,
   formatMoney, investmentScore, PERIODS,
 } from "@/lib/api";
 import NeighborhoodList from "@/components/NeighborhoodList";
 import MapView from "@/components/MapView";
+import AddressSearch from "@/components/AddressSearch";
 
 const DEFAULT_METRO = "Denver, CO metro area";
 
@@ -31,10 +32,12 @@ export default function Home() {
   const [selectedMetro, setSelectedMetro] = useState<string>(DEFAULT_METRO);
   const [selected, setSelected]           = useState<Property | null>(null);
   const [search, setSearch]               = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
   const [calcPeriod, setCalcPeriod]       = useState(12);
   const [calcAmount, setCalcAmount]       = useState(500000);
   const [loading, setLoading]             = useState(true);
   const [error, setError]                 = useState("");
+  const searchContainerRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -52,6 +55,17 @@ export default function Home() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Close neighborhood autocomplete when clicking outside
+  useEffect(() => {
+    function onDown(e: MouseEvent) {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+        setSearchFocused(false);
+      }
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, []);
+
   const visibleProperties = selectedMetro
     ? properties.filter((p) => p.metro === selectedMetro)
     : properties;
@@ -64,6 +78,11 @@ export default function Home() {
   const avgRoi   = count ? visibleProperties.reduce((s, p) => s + p.roi_pct, 0) / count : 0;
   const avgPrice = count ? visibleProperties.reduce((s, p) => s + p.price,   0) / count : 0;
   const hotCount = visibleProperties.filter((p) => p.roi_pct >= 8).length;
+
+  const nbhdSuggestions = search.trim().length > 0
+    ? visibleProperties.filter((p) => p.name.toLowerCase().includes(search.toLowerCase())).slice(0, 8)
+    : [];
+  const showNbhdDropdown = searchFocused && nbhdSuggestions.length > 0;
 
   const calcRoi    = selected ? selected.roi_pct : avgRoi;
   const calcReturn = Math.round(calcAmount * (calcRoi / 100) * (calcPeriod / 12));
@@ -123,6 +142,19 @@ export default function Home() {
           </div>
         </div>
 
+        {/* Address Search */}
+        {!loading && !error && (
+          <div className="flex-none px-4 py-3 border-b border-slate-800/60">
+            <AddressSearch
+              allProperties={properties}
+              onSelect={(property, metro) => {
+                if (metro) setSelectedMetro(metro);
+                setSelected(property);
+              }}
+            />
+          </div>
+        )}
+
         {/* KPI 2×2 grid */}
         {!loading && !error && (
           <div className="flex-none px-4 py-3 border-b border-slate-800/60">
@@ -136,24 +168,54 @@ export default function Home() {
           </div>
         )}
 
-        {/* Search */}
+        {/* Neighborhood Search with autocomplete */}
         {!loading && !error && (
           <div className="flex-none px-4 py-2.5 border-b border-slate-800/60">
-            <div className="relative">
-              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div ref={searchContainerRef} className="relative">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
               <input
                 type="text"
                 placeholder="Search neighborhoods…"
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full bg-[#161B30] border border-slate-700/60 rounded-lg pl-9 pr-8 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-400/60 transition-colors"
+                onChange={(e) => { setSearch(e.target.value); setSearchFocused(true); }}
+                onFocus={() => setSearchFocused(true)}
+                className="w-full bg-[#161B30] border border-slate-700/60 rounded-xl pl-9 pr-8 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-400/60 transition-colors"
               />
               {search && (
-                <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-xs">
+                <button
+                  onClick={() => { setSearch(""); setSearchFocused(false); }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-xs"
+                >
                   ✕
                 </button>
+              )}
+
+              {/* Autocomplete dropdown */}
+              {showNbhdDropdown && (
+                <div className="absolute top-full left-0 right-0 mt-1.5 backdrop-blur-md bg-[#161B30]/95 border border-slate-700/60 rounded-xl shadow-2xl shadow-black/60 z-50 overflow-hidden">
+                  {nbhdSuggestions.map((p, i) => (
+                    <button
+                      key={p.id}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        setSelected(p);
+                        setSearch("");
+                        setSearchFocused(false);
+                      }}
+                      className={`w-full text-left px-3 py-2.5 hover:bg-slate-700/40 active:bg-slate-700/60 transition-colors flex items-center justify-between gap-3 ${i < nbhdSuggestions.length - 1 ? "border-b border-slate-800/60" : ""}`}
+                    >
+                      <div className="min-w-0">
+                        <p className="text-[12px] font-semibold text-slate-200 truncate">{p.name}</p>
+                        <p className="text-[10px] text-slate-500">{formatMoney(p.price)}</p>
+                      </div>
+                      <span className={`text-[10px] font-bold flex-none ${p.roi_pct >= 8 ? "text-emerald-400" : p.roi_pct >= 4 ? "text-amber-400" : "text-slate-500"}`}>
+                        +{p.roi_pct.toFixed(1)}%
+                      </span>
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
           </div>
