@@ -13,6 +13,18 @@ import {
   fetchDemographicsBatch,
 } from "@/lib/api";
 
+function LegendRow({ color, label, round = false }: { color: string; label: string; round?: boolean }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span
+        className={`w-3 h-3 flex-none ${round ? "rounded-full" : "rounded-sm"}`}
+        style={{ background: color }}
+      />
+      <span className="text-slate-400">{label}</span>
+    </div>
+  );
+}
+
 interface Props {
   properties: Property[];
   selected: Property | null;
@@ -311,122 +323,185 @@ export default function MapView({ properties, selected, onSelect, visible }: Pro
 
   // ── UI ─────────────────────────────────────────────────────────────────────
 
-  const OVERLAY_OPTS: { key: OverlayMode; label: string }[] = [
-    { key: "score",      label: "Score"  },
-    { key: "income",     label: "Income" },
-    { key: "population", label: "Pop."   },
-    { key: "under18",    label: "<18 yrs"},
+  const OVERLAY_OPTS: { key: OverlayMode; label: string; icon: string }[] = [
+    { key: "score",      label: "Appreciation", icon: "◈" },
+    { key: "income",     label: "Income",        icon: "◉" },
+    { key: "population", label: "Population",    icon: "◎" },
+    { key: "under18",    label: "Youth %",       icon: "◌" },
   ];
+
+  const GLASS = "backdrop-blur-md bg-slate-900/80 border border-slate-800/80 shadow-xl shadow-black/40";
+
+  const b = selected ? badge(selected.roi_pct) : null;
+  const DOT_COLOR = { HOT: "#34d399", WARM: "#fbbf24", COOL: "#f43f5e" };
+  const DOT_SHADOW = {
+    HOT:  "0 0 8px rgba(52,211,153,0.7)",
+    WARM: "0 0 8px rgba(251,191,36,0.7)",
+    COOL: "none",
+  };
 
   return (
     <div className="w-full h-full relative">
       {/* Map canvas */}
       <div ref={containerRef} className="w-full h-full" />
 
-      {/* Overlay selector */}
-      <div className="absolute top-2 left-2 z-[1000] flex flex-col gap-1.5">
-        <div className="bg-navy-900/95 border border-navy-700 rounded-lg px-2 py-1.5 flex gap-1">
-          {OVERLAY_OPTS.map(({ key, label }) => (
+      {/* ── Floating control bubble — top-left ─── */}
+      <div className={`absolute top-4 left-4 z-[1000] ${GLASS} rounded-2xl p-3 min-w-[160px]`}>
+        <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-2">Data Layer</p>
+        <div className="flex flex-col gap-0.5">
+          {OVERLAY_OPTS.map(({ key, label, icon }) => (
             <button
               key={key}
               onClick={() => setOverlay(key)}
-              className={`text-[10px] px-2 py-0.5 rounded transition-colors ${
+              className={`flex items-center gap-2 w-full text-left text-[11px] px-2.5 py-1.5 rounded-lg font-semibold transition-all ${
                 overlay === key
-                  ? "bg-indigo-600 text-white font-semibold"
-                  : "text-gray-500 hover:text-gray-300"
+                  ? "bg-gradient-to-r from-emerald-500/20 to-cyan-500/10 text-emerald-400 border border-emerald-500/30"
+                  : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/40"
               }`}
             >
+              <span className="text-[10px] opacity-70">{icon}</span>
               {label}
             </button>
           ))}
         </div>
 
-        {/* Amenity toggle */}
-        <div className="bg-navy-900/95 border border-navy-700 rounded-lg px-2 py-1.5">
+        <div className="mt-2.5 pt-2.5 border-t border-slate-800/60">
           <button
             onClick={() => setShowAmenities(!showAmenities)}
-            className={`w-full text-[10px] text-left font-semibold transition-colors ${
-              showAmenities ? "text-amber-400" : "text-gray-600 hover:text-gray-400"
+            className={`flex items-center justify-between w-full text-[11px] px-2.5 py-1.5 rounded-lg font-semibold transition-all ${
+              showAmenities
+                ? "bg-amber-400/10 text-amber-400 border border-amber-400/25"
+                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/40"
             }`}
           >
-            {showAmenities ? "▼" : "▶"} Amenities
+            <span>Amenities</span>
+            <span className="text-[9px]">{showAmenities ? "▾" : "▸"}</span>
           </button>
           {showAmenities && (
-            <div className="mt-1.5 flex flex-col gap-1">
+            <div className="mt-2 pl-1 flex flex-col gap-1.5">
               {(["gas_station", "school", "hospital"] as Amenity["type"][]).map((t) => (
-                <label key={t} className="flex items-center gap-1.5 cursor-pointer">
+                <label key={t} className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={amenityTypes[t]}
                     onChange={(e) => setAmenityTypes((prev) => ({ ...prev, [t]: e.target.checked }))}
-                    className="accent-indigo-500 w-3 h-3"
+                    className="accent-emerald-400 w-3 h-3 rounded"
                   />
-                  <span className="text-[10px] text-gray-400">
+                  <span className="text-[10px] text-slate-400">
                     {amenityIcon(t)} {t.replace("_", " ")}
                   </span>
                 </label>
               ))}
-              {showAmenities && !amenitiesLoaded && (
-                <p className="text-[9px] text-gray-600 mt-0.5">Loading…</p>
-              )}
-              {showAmenities && amenitiesLoaded && amenities.length === 0 && (
-                <p className="text-[9px] text-gray-600 mt-0.5">No amenity data. Run load/amenities.</p>
+              {!amenitiesLoaded && <p className="text-[9px] text-slate-500 pl-5">Loading…</p>}
+              {amenitiesLoaded && amenities.length === 0 && (
+                <p className="text-[9px] text-slate-500 pl-5">No amenity data yet.</p>
               )}
             </div>
           )}
         </div>
       </div>
 
-      {/* Legend */}
-      <div className="absolute bottom-6 left-2 z-[1000] bg-navy-900/90 border border-navy-700 rounded-lg px-3 py-2 text-[10px] space-y-1 pointer-events-none">
+      {/* ── Floating legend — bottom-right ─── */}
+      <div className={`absolute bottom-4 right-4 z-[1000] ${GLASS} rounded-2xl px-3 py-3 text-[10px] space-y-1 pointer-events-none min-w-[156px]`}>
         {overlay === "score" && (
           <>
-            <p className="text-gray-500 font-semibold uppercase tracking-wider mb-1.5">Investment score</p>
-            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-sm flex-none" style={{ background: "#10b981" }} /><span className="text-gray-400">70+ High Demand</span></div>
-            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-sm flex-none" style={{ background: "#f59e0b" }} /><span className="text-gray-400">50–69 Moderate</span></div>
-            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-sm flex-none" style={{ background: "#ef4444" }} /><span className="text-gray-400">&lt;50 Slow Market</span></div>
+            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-2">Appreciation Grid</p>
+            <LegendRow color="#34d399" label="70+ High Demand" />
+            <LegendRow color="#f59e0b" label="50–69 Moderate" />
+            <LegendRow color="#ef4444" label="&lt;50 Slow Market" />
           </>
         )}
         {overlay === "income" && (
           <>
-            <p className="text-gray-500 font-semibold uppercase tracking-wider mb-1.5">Median income</p>
-            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-sm flex-none" style={{ background: "#10b981" }} /><span className="text-gray-400">$100K+</span></div>
-            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-sm flex-none" style={{ background: "#6366f1" }} /><span className="text-gray-400">$70–100K</span></div>
-            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-sm flex-none" style={{ background: "#f59e0b" }} /><span className="text-gray-400">$50–70K</span></div>
-            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-sm flex-none" style={{ background: "#ef4444" }} /><span className="text-gray-400">&lt;$50K</span></div>
+            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-2">Median Income</p>
+            <LegendRow color="#34d399" label="$100K+" />
+            <LegendRow color="#6366f1" label="$70–100K" />
+            <LegendRow color="#f59e0b" label="$50–70K" />
+            <LegendRow color="#ef4444" label="&lt;$50K" />
           </>
         )}
         {overlay === "population" && (
           <>
-            <p className="text-gray-500 font-semibold uppercase tracking-wider mb-1.5">Population density</p>
-            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-sm flex-none" style={{ background: "#6366f1" }} /><span className="text-gray-400">5K+ residents</span></div>
-            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-sm flex-none" style={{ background: "#8b5cf6" }} /><span className="text-gray-400">2–5K</span></div>
-            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-sm flex-none" style={{ background: "#a78bfa" }} /><span className="text-gray-400">1–2K</span></div>
-            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-sm flex-none" style={{ background: "#c4b5fd" }} /><span className="text-gray-400">&lt;1K</span></div>
+            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-2">Population</p>
+            <LegendRow color="#6366f1" label="5K+ residents" />
+            <LegendRow color="#8b5cf6" label="2–5K" />
+            <LegendRow color="#a78bfa" label="1–2K" />
+            <LegendRow color="#c4b5fd" label="&lt;1K" />
           </>
         )}
         {overlay === "under18" && (
           <>
-            <p className="text-gray-500 font-semibold uppercase tracking-wider mb-1.5">% Under 18</p>
-            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-sm flex-none" style={{ background: "#f97316" }} /><span className="text-gray-400">30%+</span></div>
-            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-sm flex-none" style={{ background: "#fb923c" }} /><span className="text-gray-400">22–30%</span></div>
-            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-sm flex-none" style={{ background: "#fdba74" }} /><span className="text-gray-400">15–22%</span></div>
-            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-sm flex-none" style={{ background: "#374151" }} /><span className="text-gray-400">&lt;15%</span></div>
+            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-2">Youth %</p>
+            <LegendRow color="#f97316" label="30%+" />
+            <LegendRow color="#fb923c" label="22–30%" />
+            <LegendRow color="#fdba74" label="15–22%" />
+            <LegendRow color="#374151" label="&lt;15%" />
           </>
         )}
         {showAmenities && (
-          <div className="mt-2 pt-2 border-t border-navy-700 space-y-1">
-            <p className="text-gray-500 font-semibold uppercase tracking-wider mb-1">Amenities</p>
-            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full flex-none" style={{ background: "#f59e0b" }} /><span className="text-gray-400">Gas station</span></div>
-            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full flex-none" style={{ background: "#3b82f6" }} /><span className="text-gray-400">School</span></div>
-            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full flex-none" style={{ background: "#ef4444" }} /><span className="text-gray-400">Hospital</span></div>
+          <div className="mt-2 pt-2 border-t border-slate-800/60 space-y-1">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">Amenities</p>
+            <LegendRow color="#f59e0b" round label="Gas station" />
+            <LegendRow color="#3b82f6" round label="School" />
+            <LegendRow color="#ef4444" round label="Hospital" />
+          </div>
+        )}
+        {/* Gradient scale bar */}
+        {overlay === "score" && (
+          <div className="mt-2 pt-2 border-t border-slate-800/60">
+            <div className="h-1.5 rounded-full bg-gradient-to-r from-[#ef4444] via-[#f59e0b] to-[#34d399]" />
+            <div className="flex justify-between mt-1">
+              <span className="text-[8px] text-slate-500">Low</span>
+              <span className="text-[8px] text-slate-500">High</span>
+            </div>
           </div>
         )}
       </div>
 
+      {/* ── Selected neighborhood card — bottom-left ─── */}
+      {selected && b && (
+        <div className={`absolute bottom-4 left-4 z-[1000] ${GLASS} rounded-2xl p-4 max-w-[220px]`}>
+          <div className="flex items-center gap-2 mb-2.5">
+            <div
+              className="w-2 h-2 rounded-full flex-none"
+              style={{ background: DOT_COLOR[b], boxShadow: DOT_SHADOW[b] }}
+            />
+            <p className="text-sm font-bold text-slate-100 truncate leading-tight">{selected.name}</p>
+          </div>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+            <div>
+              <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Price</p>
+              <p className="text-sm font-bold text-slate-100">{formatMoney(selected.price)}</p>
+            </div>
+            <div>
+              <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Ann. ROI</p>
+              <p className="text-sm font-bold text-emerald-400">+{selected.roi_pct.toFixed(1)}%</p>
+            </div>
+            {selected.days_on_market != null && (
+              <div className="col-span-2">
+                <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Sells in</p>
+                <p className="text-sm font-bold text-slate-100">{Math.round(selected.days_on_market)} days</p>
+              </div>
+            )}
+          </div>
+          <div className="mt-2.5">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[9px] text-slate-400">Score</span>
+              <span className="text-[9px] font-semibold text-slate-300">{investmentScore(selected.roi_pct)}/100</span>
+            </div>
+            <div className="h-1 bg-slate-800 rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-400"
+                style={{ width: `${investmentScore(selected.roi_pct)}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {indexed.length === 0 && (
-        <div className="absolute inset-0 flex items-center justify-center bg-navy-950/60 z-[1000]">
-          <p className="text-sm text-gray-500">No geocoded neighbourhoods for this metro yet.</p>
+        <div className="absolute inset-0 flex items-center justify-center bg-[#070A13]/60 z-[1000]">
+          <p className="text-sm text-slate-500">No geocoded neighbourhoods for this metro yet.</p>
         </div>
       )}
     </div>

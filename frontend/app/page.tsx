@@ -1,24 +1,40 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
-import { fetchProperties, fetchMetros, Property } from "@/lib/api";
+import {
+  fetchProperties, fetchMetros, Property,
+  formatMoney, investmentScore, PERIODS,
+} from "@/lib/api";
 import NeighborhoodList from "@/components/NeighborhoodList";
-import PropertyPanel from "@/components/PropertyPanel";
-import HeroCards from "@/components/HeroCards";
-import AddressLookup from "@/components/AddressLookup";
 import MapView from "@/components/MapView";
 
 const DEFAULT_METRO = "Denver, CO metro area";
 
+function KpiCard({
+  label, value, sub, accent = false,
+}: {
+  label: string; value: string; sub: string; accent?: boolean;
+}) {
+  return (
+    <div className="bg-[#161B30] border border-slate-800/60 rounded-xl p-3">
+      <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-1.5">{label}</p>
+      <p className={`text-xl font-black leading-none ${accent ? "bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent" : "text-slate-100"}`}>
+        {value}
+      </p>
+      <p className="text-[10px] text-slate-500 mt-1">{sub}</p>
+    </div>
+  );
+}
+
 export default function Home() {
-  const [properties, setProperties] = useState<Property[]>([]);
-  const [metros, setMetros] = useState<string[]>([]);
+  const [properties, setProperties]       = useState<Property[]>([]);
+  const [metros, setMetros]               = useState<string[]>([]);
   const [selectedMetro, setSelectedMetro] = useState<string>(DEFAULT_METRO);
-  const [selected, setSelected] = useState<Property | null>(null);
-  const [search, setSearch] = useState("");
-  const [timePeriod, setTimePeriod] = useState(6);
-  const [viewMode, setViewMode] = useState<"list" | "map">("list");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [selected, setSelected]           = useState<Property | null>(null);
+  const [search, setSearch]               = useState("");
+  const [calcPeriod, setCalcPeriod]       = useState(12);
+  const [calcAmount, setCalcAmount]       = useState(500000);
+  const [loading, setLoading]             = useState(true);
+  const [error, setError]                 = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -28,7 +44,7 @@ export default function Home() {
       setProperties([...data.properties].sort((a, b) => a.name.localeCompare(b.name)));
       setMetros(metroList);
     } catch {
-      setError("Failed to load property data. Please try refreshing the page.");
+      setError("Failed to load property data. Please try refreshing.");
     } finally {
       setLoading(false);
     }
@@ -44,192 +60,223 @@ export default function Home() {
     ? visibleProperties.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()))
     : visibleProperties;
 
-  const metroDisplayName = selectedMetro
-    ? selectedMetro.replace(" metro area", "")
-    : "All cities";
+  const count    = visibleProperties.length;
+  const avgRoi   = count ? visibleProperties.reduce((s, p) => s + p.roi_pct, 0) / count : 0;
+  const avgPrice = count ? visibleProperties.reduce((s, p) => s + p.price,   0) / count : 0;
+  const hotCount = visibleProperties.filter((p) => p.roi_pct >= 8).length;
+
+  const calcRoi    = selected ? selected.roi_pct : avgRoi;
+  const calcReturn = Math.round(calcAmount * (calcRoi / 100) * (calcPeriod / 12));
+  const calcLabel  = PERIODS.find((p) => p.months === calcPeriod)?.label ?? "";
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden">
+    <div className="flex h-screen overflow-hidden bg-[#070A13]">
 
-      {/* Header */}
-      <header className="flex-none flex items-center justify-between px-5 py-3 bg-navy-900 border-b border-navy-700">
-        <div className="flex items-center gap-3">
-          {/* Logo with indigo glow */}
-          <div className="relative">
-            <div className="absolute inset-0 rounded-xl bg-indigo-500/25 blur-lg scale-150 pointer-events-none" />
-            <div className="relative w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-400 to-violet-600 flex items-center justify-center text-white font-black text-base shadow-lg shadow-indigo-500/25">
-              P
+      {/* ── LEFT PANEL ─────────────────────────────────────────────────────── */}
+      <aside className="w-[35%] flex-none flex flex-col bg-[#0F1322] border-r border-slate-800/60 overflow-hidden">
+
+        {/* Header */}
+        <div className="flex-none px-4 pt-4 pb-3 border-b border-slate-800/60">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <div className="absolute inset-0 rounded-lg bg-emerald-400/25 blur-md pointer-events-none" />
+                <div className="relative w-9 h-9 rounded-lg bg-gradient-to-br from-emerald-400 to-cyan-400 flex items-center justify-center font-black text-sm text-black shadow-lg shadow-emerald-900/40">
+                  P
+                </div>
+              </div>
+              <div>
+                <p className="font-black text-[18px] leading-none bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
+                  PropIQ
+                </p>
+                <span className="text-[9px] font-bold uppercase tracking-widest bg-emerald-400/10 text-emerald-400 border border-emerald-400/30 px-1.5 py-0.5 rounded mt-0.5 inline-block">
+                  Enterprise
+                </span>
+              </div>
             </div>
+            <button
+              onClick={load}
+              title="Reload data"
+              className="text-slate-500 hover:text-emerald-400 border border-slate-700/50 rounded-lg px-2.5 py-1.5 text-xs transition-colors"
+            >
+              ↺
+            </button>
           </div>
-          <div>
-            <p className="font-bold text-white tracking-tight leading-none">PropIQ</p>
-            <p className="text-[11px] text-gray-500 mt-0.5 leading-none">
-              {selectedMetro ? selectedMetro.replace(" metro area", "") : "US"} Real Estate Intelligence
-            </p>
-          </div>
-        </div>
 
-        <div className="flex items-center gap-3">
-          {/* Metro switcher */}
+          <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 block mb-1.5">
+            Market / Region
+          </label>
           <div className="relative">
             <select
               value={selectedMetro}
               onChange={(e) => { setSelectedMetro(e.target.value); setSelected(null); setSearch(""); }}
-              className="appearance-none bg-navy-800 border border-navy-700 rounded-lg pl-3 pr-8 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-indigo-500 transition-colors cursor-pointer"
+              className="w-full appearance-none bg-[#161B30] border border-slate-700/60 text-slate-100 text-sm rounded-lg pl-3 pr-8 py-2 focus:outline-none focus:border-emerald-400/60 transition-colors cursor-pointer"
             >
-              <option value="">All cities</option>
+              <option value="">All Markets</option>
               {metros.map((m) => (
                 <option key={m} value={m}>{m.replace(" metro area", "")}</option>
               ))}
             </select>
-            <svg className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500"
-              fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
           </div>
-
-          {!loading && (
-            <span className="text-xs text-gray-600">
-              {visibleProperties.length} neighborhoods
-            </span>
-          )}
-          <button onClick={load}
-            className="text-xs px-3 py-1.5 rounded-lg border border-navy-700 hover:bg-navy-800 transition-colors text-gray-500">
-            Reload
-          </button>
         </div>
-      </header>
 
-      {loading ? (
-        <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-600">
-          <div className="w-8 h-8 border-2 border-navy-700 border-t-indigo-400 rounded-full animate-spin" />
-          <p className="text-sm">Loading neighborhoods…</p>
-        </div>
-      ) : error ? (
-        <div className="flex-1 flex items-center justify-center">
-          <p className="text-sm text-red-400 bg-red-950/40 border border-red-800/50 rounded-lg px-5 py-3">{error}</p>
-        </div>
-      ) : (
-        <>
-          {/* Address lookup */}
-          <AddressLookup
-            allProperties={properties}
-            onMatch={(property, metro) => {
-              if (metro) setSelectedMetro(metro);
-              setSelected(property);
-              setSearch("");
-            }}
-          />
+        {/* KPI 2×2 grid */}
+        {!loading && !error && (
+          <div className="flex-none px-4 py-3 border-b border-slate-800/60">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2.5">Market Overview</p>
+            <div className="grid grid-cols-2 gap-2">
+              <KpiCard label="Neighborhoods"  value={count.toLocaleString()}    sub="tracked"        />
+              <KpiCard label="Avg Annual ROI" value={`${avgRoi.toFixed(1)}%`}   sub="year-over-year" accent />
+              <KpiCard label="Median Price"   value={formatMoney(avgPrice)}     sub="avg sale price" />
+              <KpiCard label="Hot Markets"    value={hotCount.toString()}        sub="ROI ≥ 8%"       accent />
+            </div>
+          </div>
+        )}
 
-          {/* Hero: top 3 picks */}
-          <HeroCards
-            properties={visibleProperties}
-            onSelect={setSelected}
-            selected={selected}
-            timePeriod={timePeriod}
-          />
-
-          {/* Search bar */}
-          <div className="flex-none px-4 py-2.5 bg-navy-950 border-b border-navy-800">
-            <div className="relative max-w-xs">
-              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600"
-                fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        {/* Search */}
+        {!loading && !error && (
+          <div className="flex-none px-4 py-2.5 border-b border-slate-800/60">
+            <div className="relative">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
               <input
                 type="text"
-                placeholder={`Search in ${metroDisplayName}…`}
+                placeholder="Search neighborhoods…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full bg-navy-900 border border-navy-800 rounded-lg pl-9 pr-8 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-indigo-500 transition-colors"
+                className="w-full bg-[#161B30] border border-slate-700/60 rounded-lg pl-9 pr-8 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-400/60 transition-colors"
               />
               {search && (
-                <button onClick={() => setSearch("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400 text-xs">
+                <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-xs">
                   ✕
                 </button>
               )}
             </div>
           </div>
+        )}
 
-          {/* Split layout */}
-          <div className="flex-1 flex overflow-hidden">
-            {/* Left: list or map */}
-            <aside className="w-72 flex-none flex flex-col border-r border-navy-800 overflow-hidden">
-
-              {/* Tab switcher */}
-              <div className="flex-none flex border-b border-navy-800">
-                <button
-                  onClick={() => setViewMode("list")}
-                  className={`flex-1 py-2 text-xs font-semibold tracking-wide transition-colors ${
-                    viewMode === "list"
-                      ? "text-white border-b-2 border-indigo-500 bg-navy-900/40"
-                      : "text-gray-600 hover:text-gray-400"
-                  }`}
-                >
-                  ☰ List
-                </button>
-                <button
-                  onClick={() => setViewMode("map")}
-                  className={`flex-1 py-2 text-xs font-semibold tracking-wide transition-colors ${
-                    viewMode === "map"
-                      ? "text-white border-b-2 border-indigo-500 bg-navy-900/40"
-                      : "text-gray-600 hover:text-gray-400"
-                  }`}
-                >
-                  🗺 Map
-                </button>
+        {/* Neighborhood list */}
+        <div className="flex-1 overflow-y-auto">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-500">
+              <div className="w-7 h-7 border-2 border-slate-700 border-t-emerald-400 rounded-full animate-spin" />
+              <p className="text-xs">Loading markets…</p>
+            </div>
+          ) : error ? (
+            <div className="p-4">
+              <p className="text-xs text-red-400 bg-red-950/40 border border-red-800/50 rounded-xl px-4 py-3">{error}</p>
+            </div>
+          ) : (
+            <>
+              <div className="px-4 py-2 flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Neighborhoods</span>
+                <span className="text-[10px] text-slate-500">{filteredProperties.length} shown</span>
               </div>
+              <NeighborhoodList
+                properties={filteredProperties}
+                search=""
+                selected={selected}
+                onSelect={setSelected}
+              />
+            </>
+          )}
+        </div>
 
-              {/* List view */}
-              <div className={`flex flex-col flex-1 overflow-hidden ${viewMode === "list" ? "" : "hidden"}`}>
-                <div className="flex-none px-4 py-2 border-b border-navy-800 flex items-center justify-between">
-                  <span className="text-[10px] font-semibold text-gray-600 uppercase tracking-widest">
-                    Neighborhoods
-                  </span>
-                  <span className="text-[10px] text-gray-700">
-                    {filteredProperties.length} shown
-                  </span>
-                </div>
-                <div className="flex-1 overflow-y-auto">
-                  <NeighborhoodList
-                    properties={filteredProperties}
-                    search=""
-                    selected={selected}
-                    onSelect={setSelected}
+        {/* Investment Calculator */}
+        {!loading && !error && (
+          <div className="flex-none border-t border-slate-800/60 px-4 pt-3 pb-4 backdrop-blur-md bg-[#0F1322]/80">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Investment Calculator</p>
+            <div className="space-y-3">
+              <div>
+                <label className="text-[10px] text-slate-400 block mb-1.5">Investment Amount</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm select-none">$</span>
+                  <input
+                    type="number"
+                    value={calcAmount}
+                    onChange={(e) => setCalcAmount(Math.max(0, parseInt(e.target.value) || 0))}
+                    className="w-full bg-[#161B30] border border-slate-700/60 text-slate-100 text-sm rounded-lg pl-7 pr-3 py-2 focus:outline-none focus:border-emerald-400/60 transition-colors"
+                    placeholder="500000"
                   />
                 </div>
               </div>
 
-              {/* Map view — stays mounted to avoid Leaflet reinit on tab switch */}
-              <div className={`flex-1 overflow-hidden ${viewMode === "map" ? "" : "hidden"}`}>
-                <MapView
-                  key={selectedMetro}
-                  properties={visibleProperties}
-                  selected={selected}
-                  onSelect={setSelected}
-                  visible={viewMode === "map"}
-                />
+              <div>
+                <label className="text-[10px] text-slate-400 block mb-1.5">Time Period</label>
+                <div className="flex gap-1 flex-wrap">
+                  {PERIODS.map((p) => (
+                    <button
+                      key={p.months}
+                      onClick={() => setCalcPeriod(p.months)}
+                      className={`text-[10px] px-2.5 py-1 rounded-lg font-semibold transition-all ${
+                        calcPeriod === p.months
+                          ? "bg-gradient-to-r from-emerald-500 to-cyan-400 text-black shadow-md shadow-emerald-900/40"
+                          : "bg-[#161B30] text-slate-400 hover:text-slate-200 border border-slate-700/60"
+                      }`}
+                    >
+                      {p.short}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </aside>
 
-            {/* Right: property detail */}
-            <main className="flex-1 bg-navy-950 overflow-hidden">
-              <PropertyPanel property={selected} timePeriod={timePeriod} setTimePeriod={setTimePeriod} />
-            </main>
+              <div className={`rounded-xl p-3 border transition-all ${selected ? "bg-gradient-to-r from-emerald-950/50 to-cyan-950/40 border-emerald-800/40" : "bg-[#161B30] border-slate-700/60"}`}>
+                <p className="text-[10px] text-slate-400 mb-0.5">
+                  {selected ? `${selected.name} · ` : ""}{calcLabel} return
+                </p>
+                <p className={`text-2xl font-black leading-tight ${selected ? "bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent" : "text-slate-600"}`}>
+                  {selected ? `+${formatMoney(calcReturn)}` : "—"}
+                </p>
+                {selected && (
+                  <div className="mt-2">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[9px] text-slate-500">ROI score</span>
+                      <span className="text-[9px] font-semibold text-slate-400">{investmentScore(selected.roi_pct)}/100</span>
+                    </div>
+                    <div className="h-1 bg-slate-800 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-400 transition-all duration-700"
+                        style={{ width: `${investmentScore(selected.roi_pct)}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+                {!selected && (
+                  <p className="text-[10px] text-slate-600 mt-0.5">Select a neighborhood to calculate</p>
+                )}
+              </div>
+            </div>
           </div>
-        </>
-      )}
+        )}
 
-      {/* Footer disclaimer */}
-      {!loading && !error && (
-        <footer className="flex-none border-t border-navy-800 bg-navy-900/60 px-5 py-2.5">
-          <p className="text-[10px] text-gray-600 leading-relaxed">
-            📊 Market data sourced from Redfin (Jan–May 2026). Return projections are estimates based on current price growth rates and are not guaranteed. This tool is for informational purposes only and does not constitute financial advice. Always consult a licensed real estate professional before making investment decisions.
+        {/* Footer */}
+        <div className="flex-none border-t border-slate-800/60 px-4 py-2">
+          <p className="text-[9px] text-slate-600 leading-relaxed">
+            Data: Redfin Jan–May 2026. Projections are estimates, not financial advice.
           </p>
-        </footer>
-      )}
+        </div>
+      </aside>
+
+      {/* ── RIGHT PANEL ─────────────────────────────────────────────────────── */}
+      <main className="flex-1 relative overflow-hidden">
+        {loading ? (
+          <div className="flex items-center justify-center h-full">
+            <div className="w-8 h-8 border-2 border-slate-700 border-t-emerald-400 rounded-full animate-spin" />
+          </div>
+        ) : (
+          <MapView
+            key={selectedMetro}
+            properties={visibleProperties}
+            selected={selected}
+            onSelect={setSelected}
+            visible={true}
+          />
+        )}
+      </main>
     </div>
   );
 }
