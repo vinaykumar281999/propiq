@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
-import { fetchProperties, fetchMetros, loadData, Property } from "@/lib/api";
+import { fetchProperties, fetchMetros, Property } from "@/lib/api";
 import NeighborhoodList from "@/components/NeighborhoodList";
 import PropertyPanel from "@/components/PropertyPanel";
 import HeroCards from "@/components/HeroCards";
@@ -18,7 +18,6 @@ export default function Home() {
   const [timePeriod, setTimePeriod] = useState(6);
   const [viewMode, setViewMode] = useState<"list" | "map">("list");
   const [loading, setLoading] = useState(true);
-  const [loadMsg, setLoadMsg] = useState("");
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -26,15 +25,7 @@ export default function Home() {
     setError("");
     try {
       const [data, metroList] = await Promise.all([fetchProperties(), fetchMetros()]);
-      let props = data.properties;
-      if (data.total === 0) {
-        setLoadMsg("No data yet — loading from CSV…");
-        await loadData("neighborhoods");
-        const again = await fetchProperties();
-        props = again.properties;
-        setLoadMsg("");
-      }
-      setProperties([...props].sort((a, b) => a.name.localeCompare(b.name)));
+      setProperties([...data.properties].sort((a, b) => a.name.localeCompare(b.name)));
       setMetros(metroList);
     } catch {
       setError("Failed to load property data. Please try refreshing the page.");
@@ -112,7 +103,7 @@ export default function Home() {
       {loading ? (
         <div className="flex-1 flex flex-col items-center justify-center gap-3 text-gray-600">
           <div className="w-8 h-8 border-2 border-navy-700 border-t-indigo-400 rounded-full animate-spin" />
-          <p className="text-sm">{loadMsg || "Loading neighborhoods…"}</p>
+          <p className="text-sm">Loading neighborhoods…</p>
         </div>
       ) : error ? (
         <div className="flex-1 flex items-center justify-center">
