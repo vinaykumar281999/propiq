@@ -30,6 +30,15 @@ CREATE TABLE IF NOT EXISTS neighborhoods (
 );
 """
 
+# Add missing columns to tables created by older versions of this script.
+_MIGRATIONS = [
+    "ALTER TABLE neighborhoods ADD COLUMN IF NOT EXISTS lat             DOUBLE PRECISION",
+    "ALTER TABLE neighborhoods ADD COLUMN IF NOT EXISTS lng             DOUBLE PRECISION",
+    "ALTER TABLE neighborhoods ADD COLUMN IF NOT EXISTS h3_7            VARCHAR",
+    "ALTER TABLE neighborhoods ADD COLUMN IF NOT EXISTS h3_9            VARCHAR",
+    "ALTER TABLE neighborhoods ADD COLUMN IF NOT EXISTS days_on_market  DOUBLE PRECISION",
+]
+
 _UPSERT = """
 INSERT INTO neighborhoods
     (id, name, metro, price, expected_return, days_on_market, lat, lng, h3_7, h3_9)
@@ -74,9 +83,14 @@ def main() -> None:
     cur = pg.cursor()
     print("  Connected.")
 
-    # ── 3. Create table ───────────────────────────────────────────────────────
+    # ── 3. Create table + migrate any missing columns ─────────────────────────
     print("Creating neighborhoods table (if not exists) …")
     cur.execute(_CREATE_TABLE)
+    pg.commit()
+
+    print("Applying column migrations …")
+    for sql in _MIGRATIONS:
+        cur.execute(sql)
     pg.commit()
 
     # ── 4. Insert in batches with progress ───────────────────────────────────
