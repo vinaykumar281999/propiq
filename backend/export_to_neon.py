@@ -1,4 +1,4 @@
-"""Export PropIQ neighborhoods from DuckDB to Neon PostgreSQL.
+"""Export PropIQ neighborhoods and amenities from DuckDB to Neon PostgreSQL.
 
 Usage:
     python3 export_to_neon.py "postgresql://user:pass@host/db?sslmode=require"
@@ -15,7 +15,9 @@ from database import get_db, _lock
 
 BATCH_SIZE = 500
 
-_CREATE_TABLE = """
+# ── Neighborhoods ─────────────────────────────────────────────────────────────
+
+_CREATE_NEIGHBORHOODS = """
 CREATE TABLE IF NOT EXISTS neighborhoods (
     id              INTEGER PRIMARY KEY,
     name            VARCHAR        NOT NULL,
@@ -31,7 +33,7 @@ CREATE TABLE IF NOT EXISTS neighborhoods (
 """
 
 # Add missing columns to tables created by older versions of this script.
-_MIGRATIONS = [
+_NBHD_MIGRATIONS = [
     "ALTER TABLE neighborhoods ADD COLUMN IF NOT EXISTS lat             DOUBLE PRECISION",
     "ALTER TABLE neighborhoods ADD COLUMN IF NOT EXISTS lng             DOUBLE PRECISION",
     "ALTER TABLE neighborhoods ADD COLUMN IF NOT EXISTS h3_7            VARCHAR",
@@ -39,7 +41,7 @@ _MIGRATIONS = [
     "ALTER TABLE neighborhoods ADD COLUMN IF NOT EXISTS days_on_market  DOUBLE PRECISION",
 ]
 
-_UPSERT = """
+_UPSERT_NBHD = """
 INSERT INTO neighborhoods
     (id, name, metro, price, expected_return, days_on_market, lat, lng, h3_7, h3_9)
 VALUES %s
@@ -55,16 +57,30 @@ ON CONFLICT (id) DO UPDATE SET
     h3_9            = EXCLUDED.h3_9;
 """
 
+# ── Amenities ─────────────────────────────────────────────────────────────────
 
-def main() -> None:
-    if len(sys.argv) < 2:
-        print("Usage: python3 export_to_neon.py <neon_connection_string>")
-        sys.exit(1)
+_CREATE_AMENITIES = """
+CREATE TABLE IF NOT EXISTS amenities (
+    id     SERIAL PRIMARY KEY,
+    osm_id VARCHAR,
+    type   VARCHAR,
+    name   VARCHAR,
+    lat    DOUBLE PRECISION,
+    lng    DOUBLE PRECISION,
+    h3_7   VARCHAR,
+    h3_9   VARCHAR
+);
+"""
 
-    conn_str = sys.argv[1]
+_INSERT_AMENITY = """
+INSERT INTO amenities (osm_id, type, name, lat, lng, h3_7, h3_9)
+VALUES %s
+ON CONFLICT DO NOTHING;
+"""
 
-    # ── 1. Read from DuckDB ───────────────────────────────────────────────────
-    print("Reading neighborhoods from DuckDB …")
+
+def _export_neighborhoods(cur, pg) -> int:
+    print("\nReading neighborhoods from DuckDB …")
     with _lock:
         rows = get_db().execute(
             "SELECT id, name, metro, price, expected_return, "
@@ -74,40 +90,79 @@ def main() -> None:
     print(f"  {len(rows):,} rows found.")
 
     if not rows:
-        print("Nothing to export.")
-        sys.exit(0)
+        print("  No neighborhood rows — skipping.")
+        return 0
 
-    # ── 2. Connect to Neon ────────────────────────────────────────────────────
+    print("Creating neighborhoods table (if not exists) …")
+    cur.execute(_CREATE_NEIGHBORHOODS)
+    pg.commit()
+
+    print("Applying column migrations …")
+    for sql in _NBHD_MIGRATIONS:
+        cur.execute(sql)
+    pg.commit()
+
+    total, inserted = len(rows), 0
+    for i in range(0, total, BATCH_SIZE):
+        batch = rows[i : i + BATCH_SIZE]
+        psycopg2.extras.execute_values(cur, _UPSERT_NBHD, batch)
+        pg.commit()
+        inserted += len(batch)
+        print(f"  [{inserted / total * 100:5.1f}%]  {inserted:,} / {total:,} neighborhoods inserted")
+
+    return inserted
+
+
+def _export_amenities(cur, pg) -> int:
+    print("\nReading amenities from DuckDB …")
+    with _lock:
+        rows = get_db().execute(
+            "SELECT osm_id, type, name, lat, lng, h3_7, h3_9 FROM amenities ORDER BY id"
+        ).fetchall()
+    print(f"  {len(rows):,} rows found.")
+
+    if not rows:
+        print("  No amenity rows — skipping. Run load/amenities first.")
+        return 0
+
+    print("Creating amenities table (if not exists) …")
+    cur.execute(_CREATE_AMENITIES)
+    pg.commit()
+
+    # Truncate so a re-run doesn't duplicate rows (amenities have no natural PK to conflict on)
+    print("Truncating existing amenities …")
+    cur.execute("TRUNCATE TABLE amenities RESTART IDENTITY")
+    pg.commit()
+
+    total, inserted = len(rows), 0
+    for i in range(0, total, BATCH_SIZE):
+        batch = rows[i : i + BATCH_SIZE]
+        psycopg2.extras.execute_values(cur, _INSERT_AMENITY, batch)
+        pg.commit()
+        inserted += len(batch)
+        print(f"  [{inserted / total * 100:5.1f}%]  {inserted:,} / {total:,} amenities inserted")
+
+    return inserted
+
+
+def main() -> None:
+    if len(sys.argv) < 2:
+        print("Usage: python3 export_to_neon.py <neon_connection_string>")
+        sys.exit(1)
+
+    conn_str = sys.argv[1]
+
     print("Connecting to Neon …")
     pg = psycopg2.connect(conn_str)
     cur = pg.cursor()
     print("  Connected.")
 
-    # ── 3. Create table + migrate any missing columns ─────────────────────────
-    print("Creating neighborhoods table (if not exists) …")
-    cur.execute(_CREATE_TABLE)
-    pg.commit()
-
-    print("Applying column migrations …")
-    for sql in _MIGRATIONS:
-        cur.execute(sql)
-    pg.commit()
-
-    # ── 4. Insert in batches with progress ───────────────────────────────────
-    total = len(rows)
-    inserted = 0
-
-    for i in range(0, total, BATCH_SIZE):
-        batch = rows[i : i + BATCH_SIZE]
-        psycopg2.extras.execute_values(cur, _UPSERT, batch)
-        pg.commit()
-        inserted += len(batch)
-        pct = inserted / total * 100
-        print(f"  [{pct:5.1f}%]  {inserted:,} / {total:,} rows inserted")
+    n_nbhd     = _export_neighborhoods(cur, pg)
+    n_amenity  = _export_amenities(cur, pg)
 
     cur.close()
     pg.close()
-    print(f"\nDone. {inserted:,} neighborhoods exported to Neon.")
+    print(f"\nDone. {n_nbhd:,} neighborhoods + {n_amenity:,} amenities exported to Neon.")
 
 
 if __name__ == "__main__":
