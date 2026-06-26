@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import type { Property } from "@/lib/api";
 import { formatMoney, badge, BADGE_INFO, investmentScore } from "@/lib/api";
 import type { EvaluationMarker } from "@/app/api/evaluate/route";
+import AgentChat from "@/components/AgentChat";
 
 const NeighborhoodEvaluator = dynamic(
   () => import("@/components/NeighborhoodEvaluator"),
@@ -108,7 +109,7 @@ export default function MobileBottomSheet({ selected, onClose, onEvaluationCompl
 
         {/* ── Compact info (hidden when analysis is running) ─────────────── */}
         {!showAnalysis && (
-          <div className="flex-none px-5 pb-4">
+          <div className={`flex-none px-5 ${expanded ? "pb-2" : "pb-4"}`}>
             {/* Score ring + price/roi row */}
             <div className="flex items-center gap-4 mb-4">
               <ScoreRing score={score} />
@@ -145,6 +146,22 @@ export default function MobileBottomSheet({ selected, onClose, onEvaluationCompl
                 No coordinates available for this neighborhood.
               </p>
             )}
+          </div>
+        )}
+
+        {/* ── Agent chat when expanded (quick questions, no full analysis) ── */}
+        {expanded && !showAnalysis && selected.lat && selected.lng && (
+          <div className="flex-1 flex flex-col overflow-hidden border-t border-slate-800/40">
+            <div className="flex-none flex items-center gap-2 px-5 py-2">
+              <div className="flex-1 h-px bg-slate-800/40" />
+              <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500">
+                💬 Ask the Agent
+              </p>
+              <div className="flex-1 h-px bg-slate-800/40" />
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <AgentChat neighborhood={selected.name} lat={selected.lat} lng={selected.lng} />
+            </div>
           </div>
         )}
 

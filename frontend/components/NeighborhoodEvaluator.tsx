@@ -11,6 +11,7 @@ import {
   Tooltip,
 } from "recharts";
 import type { NeighborhoodEvaluation, EvaluationMarker } from "@/app/api/evaluate/route";
+import AgentChat from "@/components/AgentChat";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -198,7 +199,7 @@ export default function NeighborhoodEvaluator({
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto min-h-0">
         {loading ? (
           <div className="p-4 space-y-3">
             <div className="flex items-center gap-3 text-slate-400">
@@ -428,6 +429,22 @@ export default function NeighborhoodEvaluator({
           </div>
         ) : null}
       </div>
+
+      {/* ── Agent Chat ─────────────────────────────────────────────────────── */}
+      {!loading && !error && evaluation && (
+        <>
+          <div className="flex-none flex items-center gap-2 px-4 py-2 border-t border-slate-800/60">
+            <div className="flex-1 h-px bg-slate-800/40" />
+            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-500">
+              💬 Ask the Agent
+            </p>
+            <div className="flex-1 h-px bg-slate-800/40" />
+          </div>
+          <div className="flex-none h-72">
+            <AgentChat neighborhood={neighborhood} lat={lat} lng={lng} />
+          </div>
+        </>
+      )}
     </div>
   );
 }
