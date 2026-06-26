@@ -189,6 +189,24 @@ async function toolCompareNeighborhoods(neighborhood_a: string, neighborhood_b: 
   }
 }
 
+// ── Ollama types ──────────────────────────────────────────────────────────────
+
+interface OllamaMessage {
+  role: "system" | "user" | "assistant" | "tool";
+  content: string;
+  tool_calls?: Array<{ function: { name: string; arguments: Record<string, unknown> } }>;
+}
+
+interface OllamaApiResponse {
+  message: {
+    role: string;
+    content: string;
+    tool_calls?: Array<{ function: { name: string; arguments: Record<string, unknown> } }>;
+  };
+  done: boolean;
+  done_reason?: string;
+}
+
 // ── Tool definitions ──────────────────────────────────────────────────────────
 
 const TOOLS: Anthropic.Tool[] = [
@@ -284,6 +302,17 @@ const TOOLS: Anthropic.Tool[] = [
   },
 ];
 
+// ── Ollama tool schemas (OpenAI-compatible format) ────────────────────────────
+
+const OLLAMA_TOOLS = TOOLS.map((t) => ({
+  type: "function" as const,
+  function: {
+    name: t.name,
+    description: t.description,
+    parameters: t.input_schema,
+  },
+}));
+
 // ── Tool dispatcher ───────────────────────────────────────────────────────────
 
 async function executeTool(name: string, input: Record<string, unknown>): Promise<unknown> {
@@ -333,9 +362,112 @@ RULES:
 Current context: You are analyzing ${neighborhood}${lat != null ? ` (coordinates: ${lat}, ${lng})` : ""}.`;
 }
 
-// ── POST handler ──────────────────────────────────────────────────────────────
+// ── Agent loops ───────────────────────────────────────────────────────────────
 
 type SimpleMessage = { role: "user" | "assistant"; content: string };
+
+async function claudeAgentLoop(
+  message: string,
+  history: SimpleMessage[],
+  neighborhood: string,
+  lat: number | null,
+  lng: number | null,
+): Promise<{ answer: string; tools_called: string[] }> {
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
+  const messages: Anthropic.MessageParam[] = [
+    ...history.map((h) => ({ role: h.role, content: h.content } as Anthropic.MessageParam)),
+    { role: "user", content: message },
+  ];
+  const tools_called: string[] = [];
+  let final_answer = "";
+
+  for (let i = 0; i < 10; i++) {
+    const response = await client.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 1024,
+      system: buildSystemPrompt(neighborhood, lat, lng),
+      tools: TOOLS,
+      messages,
+    });
+
+    if (response.stop_reason === "end_turn") {
+      final_answer = response.content
+        .filter((b): b is Anthropic.TextBlock => b.type === "text")
+        .map((b) => b.text)
+        .join("\n")
+        .trim();
+      break;
+    }
+
+    if (response.stop_reason === "tool_use") {
+      messages.push({ role: "assistant", content: response.content });
+      const tool_results: Anthropic.ToolResultBlockParam[] = [];
+      for (const block of response.content) {
+        if (block.type === "tool_use") {
+          tools_called.push(block.name);
+          const result = await executeTool(block.name, block.input as Record<string, unknown>);
+          tool_results.push({ type: "tool_result", tool_use_id: block.id, content: JSON.stringify(result) });
+        }
+      }
+      messages.push({ role: "user", content: tool_results });
+    }
+  }
+
+  return { answer: final_answer, tools_called };
+}
+
+async function ollamaAgentLoop(
+  message: string,
+  history: SimpleMessage[],
+  neighborhood: string,
+  lat: number | null,
+  lng: number | null,
+): Promise<{ answer: string; tools_called: string[] }> {
+  const base  = process.env.OLLAMA_BASE_URL ?? "http://localhost:11434";
+  const model = process.env.OLLAMA_MODEL    ?? "llama3.2";
+
+  const messages: OllamaMessage[] = [
+    { role: "system",    content: buildSystemPrompt(neighborhood, lat, lng) },
+    ...history.map((h) => ({ role: h.role as "user" | "assistant", content: h.content })),
+    { role: "user",      content: message },
+  ];
+
+  const tools_called: string[] = [];
+  let final_answer = "";
+
+  for (let i = 0; i < 10; i++) {
+    const res = await fetch(`${base}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model, messages, tools: OLLAMA_TOOLS, stream: false }),
+      signal: AbortSignal.timeout(55000),
+    });
+    if (!res.ok) throw new Error(`Ollama ${res.status}: ${await res.text()}`);
+
+    const data = await res.json() as OllamaApiResponse;
+    const { message: msg } = data;
+
+    // Tool calls present → execute each and loop
+    if (msg.tool_calls && msg.tool_calls.length > 0) {
+      messages.push({ role: "assistant", content: msg.content ?? "", tool_calls: msg.tool_calls });
+      for (const call of msg.tool_calls) {
+        const name = call.function.name;
+        tools_called.push(name);
+        const result = await executeTool(name, call.function.arguments);
+        messages.push({ role: "tool", content: JSON.stringify(result) });
+      }
+      continue;
+    }
+
+    // No tool calls → final answer
+    final_answer = msg.content?.trim() ?? "";
+    break;
+  }
+
+  return { answer: final_answer, tools_called };
+}
+
+// ── POST handler ──────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
   const body = await req.json() as {
@@ -352,75 +484,46 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "message and neighborhood are required" }, { status: 400 });
   }
 
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return NextResponse.json({
-      answer: "AI agent requires ANTHROPIC_API_KEY. Add it to your .env.local file and restart the dev server.",
-      tools_called: [],
-      history,
-    });
-  }
-
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-  // Build initial messages from history + current turn
-  const messages: Anthropic.MessageParam[] = [
-    ...history.map((h) => ({ role: h.role, content: h.content } as Anthropic.MessageParam)),
-    { role: "user", content: message },
-  ];
+  // Pick backend: explicit flag, missing key, or auto-fallback on credit error
+  const preferOllama =
+    process.env.OLLAMA_FALLBACK === "true" || !process.env.ANTHROPIC_API_KEY;
 
   const tools_called: string[] = [];
   let final_answer = "";
-  const MAX_ITER = 10;
+  let backend = preferOllama ? "ollama" : "claude";
 
   try {
-    for (let i = 0; i < MAX_ITER; i++) {
-      const response = await client.messages.create({
-        model: "claude-sonnet-4-6",
-        max_tokens: 1024,
-        system: buildSystemPrompt(neighborhood, lat, lng),
-        tools: TOOLS,
-        messages,
-      });
+    let result: { answer: string; tools_called: string[] };
 
-      if (response.stop_reason === "end_turn") {
-        final_answer = response.content
-          .filter((b): b is Anthropic.TextBlock => b.type === "text")
-          .map((b) => b.text)
-          .join("\n")
-          .trim();
-        messages.push({ role: "assistant", content: response.content });
-        break;
-      }
-
-      if (response.stop_reason === "tool_use") {
-        messages.push({ role: "assistant", content: response.content });
-
-        const tool_results: Anthropic.ToolResultBlockParam[] = [];
-        for (const block of response.content) {
-          if (block.type === "tool_use") {
-            tools_called.push(block.name);
-            const result = await executeTool(block.name, block.input as Record<string, unknown>);
-            tool_results.push({
-              type: "tool_result",
-              tool_use_id: block.id,
-              content: JSON.stringify(result),
-            });
-          }
+    if (preferOllama) {
+      result = await ollamaAgentLoop(message, history, neighborhood, lat, lng);
+    } else {
+      try {
+        result = await claudeAgentLoop(message, history, neighborhood, lat, lng);
+      } catch (err) {
+        // Auto-fallback when Anthropic account has no credits
+        const errMsg = err instanceof Error ? err.message : "";
+        if (errMsg.includes("credit balance") || errMsg.includes("too low") || errMsg.includes("quota")) {
+          backend = "ollama";
+          result = await ollamaAgentLoop(message, history, neighborhood, lat, lng);
+        } else {
+          throw err;
         }
-        messages.push({ role: "user", content: tool_results });
       }
     }
+
+    final_answer    = result.answer;
+    tools_called.push(...result.tools_called);
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ error: `Agent error: ${msg}`, tools_called }, { status: 500 });
+    return NextResponse.json({ error: `Agent error (${backend}): ${msg}`, tools_called }, { status: 500 });
   }
 
-  // Build simplified history (text-only turns) for next request
   const newTurns: SimpleMessage[] = [
-    { role: "user", content: message },
+    { role: "user",      content: message },
     ...(final_answer ? [{ role: "assistant" as const, content: final_answer }] : []),
   ];
-  const updatedHistory: SimpleMessage[] = [...history, ...newTurns].slice(-20);
+  const updatedHistory = [...history, ...newTurns].slice(-20);
 
-  return NextResponse.json({ answer: final_answer, tools_called, history: updatedHistory });
+  return NextResponse.json({ answer: final_answer, tools_called, history: updatedHistory, backend });
 }
