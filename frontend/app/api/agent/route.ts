@@ -409,6 +409,19 @@ RULES:
 Current context: You are analyzing ${neighborhood}${lat != null ? ` (coordinates: ${lat}, ${lng})` : ""}.`;
 }
 
+function buildOllamaSystemPrompt(neighborhood: string, lat: number | null, lng: number | null): string {
+  return `You are a real estate data assistant.
+STRICT RULES:
+- ONLY use data returned by tools in your answer
+- NEVER add information from your training data
+- NEVER make comparisons not supported by tool results
+- If a tool returns no data, say 'No data available'
+- Every number you cite must come from a tool result
+- If you are not sure, say 'The data does not show this'
+
+Current context: You are analyzing ${neighborhood}${lat != null ? ` (coordinates: ${lat}, ${lng})` : ""}.`;
+}
+
 // ── Agent loops ───────────────────────────────────────────────────────────────
 
 type SimpleMessage = { role: "user" | "assistant"; content: string };
@@ -475,7 +488,7 @@ async function ollamaAgentLoop(
   const model = modelOverride ?? process.env.OLLAMA_MODEL ?? "llama3.2";
 
   const messages: OllamaMessage[] = [
-    { role: "system",    content: buildSystemPrompt(neighborhood, lat, lng) },
+    { role: "system",    content: buildOllamaSystemPrompt(neighborhood, lat, lng) },
     ...history.map((h) => ({ role: h.role as "user" | "assistant", content: h.content })),
     { role: "user",      content: message },
   ];
