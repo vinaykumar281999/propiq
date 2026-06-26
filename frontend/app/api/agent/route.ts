@@ -67,19 +67,57 @@ function parseLocations(elements: OverpassEl[], originLat: number, originLng: nu
 // ── Tool implementations ──────────────────────────────────────────────────────
 
 async function toolGetPriceData(neighborhood: string) {
+  console.log(`[get_price_data] querying for: "${neighborhood}"`);
   try {
     const sql = neon(process.env.DATABASE_URL!);
+
+    // ILIKE fuzzy match — tolerates apostrophes, extra words, and casing differences
     const rows = await sql`
-      SELECT name, price, roi_pct, days_on_market, expected_return
-      FROM properties
-      WHERE LOWER(name) LIKE LOWER(${"%" + neighborhood + "%"})
-      ORDER BY price DESC
+      SELECT name, price, expected_return, days_on_market
+      FROM neighborhoods
+      WHERE name ILIKE ${"%" + neighborhood + "%"}
+      ORDER BY name
       LIMIT 3
     `;
-    if (!rows.length) return { error: `No price data found for "${neighborhood}"` };
-    return { results: rows };
-  } catch {
-    return { error: "Database unavailable" };
+    console.log(`[get_price_data] matched ${rows.length} row(s):`, JSON.stringify(rows));
+
+    if (rows.length) {
+      // Derive roi_pct the same way the properties API does
+      const results = rows.map((r: Record<string, unknown>) => ({
+        name:            r.name,
+        price:           r.price,
+        expected_return: r.expected_return,
+        days_on_market:  r.days_on_market,
+        roi_pct: (r.price as number) > 0
+          ? Math.round(((r.expected_return as number) / (r.price as number)) * 10000) / 100
+          : 0,
+      }));
+      return { results };
+    }
+
+    // No match — return neighborhoods whose names start with the same first word
+    const firstWord = neighborhood.split(/\s+/)[0] ?? neighborhood;
+    const suggestions = await sql`
+      SELECT name FROM neighborhoods
+      WHERE name ILIKE ${firstWord + "%"}
+      ORDER BY name
+      LIMIT 10
+    `;
+    const names = suggestions.map((r: Record<string, unknown>) => r.name as string);
+    console.log(`[get_price_data] no match, suggestions:`, names);
+
+    if (!names.length) {
+      const sample = await sql`SELECT name FROM neighborhoods ORDER BY name LIMIT 5`;
+      return {
+        error: `No data found for "${neighborhood}"`,
+        available_neighborhoods: sample.map((r: Record<string, unknown>) => r.name as string),
+      };
+    }
+    return { error: `No data found for "${neighborhood}"`, available_neighborhoods: names };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[get_price_data] db error:`, msg);
+    return { error: `Database error: ${msg}` };
   }
 }
 
@@ -176,16 +214,25 @@ async function toolCompareNeighborhoods(neighborhood_a: string, neighborhood_b: 
   try {
     const sql = neon(process.env.DATABASE_URL!);
     const rows = await sql`
-      SELECT name, price, roi_pct, days_on_market
-      FROM properties
-      WHERE LOWER(name) LIKE LOWER(${"%" + neighborhood_a + "%"})
-         OR LOWER(name) LIKE LOWER(${"%" + neighborhood_b + "%"})
+      SELECT name, price, expected_return, days_on_market
+      FROM neighborhoods
+      WHERE name ILIKE ${"%" + neighborhood_a + "%"}
+         OR name ILIKE ${"%" + neighborhood_b + "%"}
       LIMIT 4
     `;
     if (!rows.length) return { error: "No data found for either neighborhood" };
-    return { comparison: rows };
-  } catch {
-    return { error: "Database unavailable" };
+    const comparison = rows.map((r: Record<string, unknown>) => ({
+      name:            r.name,
+      price:           r.price,
+      days_on_market:  r.days_on_market,
+      roi_pct: (r.price as number) > 0
+        ? Math.round(((r.expected_return as number) / (r.price as number)) * 10000) / 100
+        : 0,
+    }));
+    return { comparison };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { error: `Database error: ${msg}` };
   }
 }
 
