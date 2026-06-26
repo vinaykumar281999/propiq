@@ -15,6 +15,11 @@ const NeighborhoodEvaluator = dynamic(
   { ssr: false },
 );
 
+const MobileBottomSheet = dynamic(
+  () => import("@/components/MobileBottomSheet"),
+  { ssr: false },
+);
+
 const DEFAULT_METRO = "Denver, CO metro area";
 
 function KpiCard({
@@ -106,8 +111,8 @@ export default function Home() {
   return (
     <div className="flex h-screen overflow-hidden bg-[#070A13]">
 
-      {/* ── LEFT PANEL ─────────────────────────────────────────────────────── */}
-      <aside className="w-[35%] flex-none flex flex-col bg-[#0F1322] border-r border-slate-800/60 overflow-hidden">
+      {/* ── LEFT PANEL — hidden on mobile, visible md+ ───────────────────── */}
+      <aside className="hidden md:flex md:flex-col w-[35%] flex-none bg-[#0F1322] border-r border-slate-800/60 overflow-hidden">
 
         {/* Header */}
         <div className="flex-none px-4 pt-4 pb-3 border-b border-slate-800/60">
@@ -365,9 +370,9 @@ export default function Home() {
           />
         )}
 
-        {/* Evaluator overlay panel */}
+        {/* Desktop evaluator overlay — hidden on mobile */}
         {showEvaluator && selected && selected.lat && selected.lng && (
-          <div className="absolute right-0 top-0 bottom-0 w-[420px] z-[2000] overflow-hidden">
+          <div className="hidden md:block absolute right-0 top-0 bottom-0 w-[420px] z-[2000] overflow-hidden">
             <NeighborhoodEvaluator
               neighborhood={selected.name}
               lat={selected.lat}
@@ -376,6 +381,15 @@ export default function Home() {
               onEvaluationComplete={setEvalMarkers}
             />
           </div>
+        )}
+
+        {/* Mobile bottom sheet — hidden on desktop */}
+        {selected && (
+          <MobileBottomSheet
+            selected={selected}
+            onClose={() => setSelected(null)}
+            onEvaluationComplete={setEvalMarkers}
+          />
         )}
       </main>
     </div>
