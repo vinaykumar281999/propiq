@@ -1,19 +1,31 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 
-interface ChatMessage {
-  role: "user" | "agent";
-  text: string;
-  tools?: string[];
-}
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 type HistoryItem = { role: "user" | "assistant"; content: string };
+
+interface ModelResponse {
+  text: string;
+  tools: string[];
+  loading: boolean;
+  ms: number | null;
+}
+
+interface Turn {
+  id: number;
+  question: string;
+  llama: ModelResponse;
+  qwen: ModelResponse;
+}
 
 interface Props {
   neighborhood: string;
   lat: number | null;
   lng: number | null;
 }
+
+// ── Constants ─────────────────────────────────────────────────────────────────
 
 const SUGGESTIONS = [
   "Good for families?",
@@ -24,82 +36,194 @@ const SUGGESTIONS = [
 ];
 
 const TOOL_LABEL: Record<string, string> = {
-  get_price_data:          "Fetching price data",
-  get_schools_nearby:      "Checking schools nearby",
-  get_hospitals_nearby:    "Checking healthcare access",
-  get_lifestyle_amenities: "Scanning amenities",
-  get_premium_factors:     "Evaluating premium factors",
-  calculate_mortgage:      "Calculating mortgage",
-  compare_neighborhoods:   "Comparing neighborhoods",
+  get_price_data:          "price data",
+  get_schools_nearby:      "schools",
+  get_hospitals_nearby:    "healthcare",
+  get_lifestyle_amenities: "amenities",
+  get_premium_factors:     "premium factors",
+  calculate_mortgage:      "mortgage",
+  compare_neighborhoods:   "comparison",
 };
 
+const EMPTY_RESPONSE: ModelResponse = { text: "", tools: [], loading: true, ms: null };
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function historyFromTurns(turns: Turn[], side: "llama" | "qwen"): HistoryItem[] {
+  const items: HistoryItem[] = [];
+  for (const t of turns) {
+    const r = t[side];
+    if (r.loading || !r.text) continue;
+    items.push({ role: "user",      content: t.question });
+    items.push({ role: "assistant", content: r.text });
+  }
+  return items.slice(-20);
+}
+
+async function fetchModel(
+  question: string,
+  modelId: string,
+  history: HistoryItem[],
+  neighborhood: string,
+  lat: number | null,
+  lng: number | null,
+): Promise<{ answer: string; tools_called: string[]; ms: number }> {
+  const t0 = Date.now();
+  const res = await fetch("/api/agent", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message: question, neighborhood, lat, lng, model: modelId, history }),
+  });
+  const data = await res.json() as { answer?: string; error?: string; tools_called?: string[] };
+  return {
+    answer:      data.answer || data.error || "No response.",
+    tools_called: data.tools_called ?? [],
+    ms:          Date.now() - t0,
+  };
+}
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function Dots() {
+  return (
+    <div className="flex gap-1 items-center py-1">
+      {[0, 1, 2].map((i) => (
+        <span
+          key={i}
+          className="w-1 h-1 rounded-full bg-slate-500 inline-block animate-bounce"
+          style={{ animationDelay: `${i * 0.15}s` }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ToolPills({ tools }: { tools: string[] }) {
+  if (!tools.length) return null;
+  return (
+    <div className="flex flex-wrap gap-0.5 mb-1">
+      {tools.map((t) => (
+        <span
+          key={t}
+          className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-violet-900/30 border border-violet-700/40 text-violet-300 leading-none"
+        >
+          🔧 {TOOL_LABEL[t] ?? t.replace(/_/g, " ")}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function ResponseCell({ r }: { r: ModelResponse }) {
+  return (
+    <div className="bg-slate-800/70 border border-slate-700/50 rounded-xl p-2.5 min-h-[48px]">
+      {r.loading ? (
+        <Dots />
+      ) : (
+        <>
+          <ToolPills tools={r.tools} />
+          <p className="text-[11px] leading-relaxed text-slate-200 whitespace-pre-wrap break-words">
+            {r.text}
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
+
 export default function AgentChat({ neighborhood, lat, lng }: Props) {
-  const [messages, setMessages]   = useState<ChatMessage[]>([]);
-  const [history, setHistory]     = useState<HistoryItem[]>([]);
-  const [input, setInput]         = useState("");
-  const [loading, setLoading]     = useState(false);
-  const bottomRef                 = useRef<HTMLDivElement>(null);
-  const inputRef                  = useRef<HTMLInputElement>(null);
+  const [turns, setTurns]   = useState<Turn[]>([]);
+  const [input, setInput]   = useState("");
+  const inputRef            = useRef<HTMLInputElement>(null);
+  const bottomRef           = useRef<HTMLDivElement>(null);
+
+  const loading = turns.some((t) => t.llama.loading || t.qwen.loading);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
+  }, [turns]);
 
-  // Reset when neighborhood changes
   useEffect(() => {
-    setMessages([]);
-    setHistory([]);
+    setTurns([]);
     setInput("");
   }, [neighborhood]);
 
   const send = async (text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed || loading) return;
+    const question = text.trim();
+    if (!question || loading) return;
 
-    setMessages((prev) => [...prev, { role: "user", text: trimmed }]);
+    const id = Date.now();
+    setTurns((prev) => [
+      ...prev,
+      { id, question, llama: { ...EMPTY_RESPONSE }, qwen: { ...EMPTY_RESPONSE } },
+    ]);
     setInput("");
-    setLoading(true);
 
-    try {
-      const res = await fetch("/api/agent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: trimmed, neighborhood, lat, lng, history }),
-      });
-      const data = await res.json();
+    const llamaHistory = historyFromTurns(turns, "llama");
+    const qwenHistory  = historyFromTurns(turns, "qwen");
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "agent",
-          text: data.answer || data.error || "No response received.",
-          tools: (data.tools_called as string[]) ?? [],
-        },
-      ]);
-      if (data.history) setHistory(data.history as HistoryItem[]);
-    } catch {
-      setMessages((prev) => [
-        ...prev,
-        { role: "agent", text: "Connection error — please try again.", tools: [] },
-      ]);
-    } finally {
-      setLoading(false);
-      inputRef.current?.focus();
-    }
+    const update = (side: "llama" | "qwen", patch: Partial<ModelResponse>) =>
+      setTurns((prev) =>
+        prev.map((t) => t.id === id ? { ...t, [side]: { ...t[side], ...patch } } : t),
+      );
+
+    await Promise.allSettled([
+      fetchModel(question, "llama3.2",   llamaHistory, neighborhood, lat, lng)
+        .then((r) => update("llama", { text: r.answer, tools: r.tools_called, loading: false, ms: r.ms }))
+        .catch((e) => update("llama", { text: `Error: ${e instanceof Error ? e.message : e}`, tools: [], loading: false, ms: null })),
+
+      fetchModel(question, "qwen3.5",    qwenHistory,  neighborhood, lat, lng)
+        .then((r) => update("qwen",  { text: r.answer, tools: r.tools_called, loading: false, ms: r.ms }))
+        .catch((e) => update("qwen",  { text: `Error: ${e instanceof Error ? e.message : e}`, tools: [], loading: false, ms: null })),
+    ]);
+
+    inputRef.current?.focus();
   };
 
-  const handleKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(input); }
-  };
-
-  const showSuggestions = messages.length === 0 && !loading;
+  const lastTurn = turns.at(-1);
 
   return (
     <div className="flex flex-col h-full">
 
-      {/* ── Suggestion chips ──────────────────────────────────────────────── */}
-      {showSuggestions && (
-        <div className="flex-none px-4 pt-3 pb-2">
+      {/* ── Model header tabs ───────────────────────────────────────────────── */}
+      <div className="flex-none grid grid-cols-2 border-b border-slate-800/60 bg-slate-900/50">
+        {(
+          [
+            { key: "llama" as const, label: "Llama 3.2",  color: "text-orange-400",  border: "border-orange-500/40" },
+            { key: "qwen"  as const, label: "Qwen 3.5",   color: "text-cyan-400",    border: "border-cyan-500/40"   },
+          ] as const
+        ).map(({ key, label, color, border }) => {
+          const r = lastTurn?.[key];
+          return (
+            <div
+              key={key}
+              className={`flex items-center gap-1.5 px-3 py-2 border-b-2 ${border} first:border-r first:border-r-slate-800/60`}
+            >
+              <span className={`text-[10px] font-black uppercase tracking-wide ${color}`}>
+                {label}
+              </span>
+              {r?.loading && (
+                <span className="flex gap-0.5">
+                  {[0,1,2].map((i) => (
+                    <span key={i} className="w-1 h-1 rounded-full bg-slate-500 inline-block animate-bounce" style={{ animationDelay: `${i * 0.12}s` }} />
+                  ))}
+                </span>
+              )}
+              {!r?.loading && r?.ms != null && (
+                <span className="text-[9px] text-slate-500 ml-auto">
+                  ⏱ {(r.ms / 1000).toFixed(1)}s
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Suggestion chips (empty state) ─────────────────────────────────── */}
+      {turns.length === 0 && (
+        <div className="flex-none px-3 pt-2.5 pb-1">
           <div className="flex flex-wrap gap-1.5">
             {SUGGESTIONS.map((s) => (
               <button
@@ -114,79 +238,47 @@ export default function AgentChat({ neighborhood, lat, lng }: Props) {
         </div>
       )}
 
-      {/* ── Message list ──────────────────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto px-4 py-2 space-y-3 min-h-0">
-        {messages.map((msg, i) => (
-          <div key={i}>
-            {/* Tool call pills appear above agent response */}
-            {msg.role === "agent" && msg.tools && msg.tools.length > 0 && (
-              <div className="flex flex-wrap gap-1 mb-1.5 ml-1">
-                {msg.tools.map((t) => (
-                  <span
-                    key={t}
-                    className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-violet-900/30 border border-violet-700/40 text-violet-300"
-                  >
-                    🔧 {TOOL_LABEL[t] ?? t.replace(/_/g, " ")}
-                  </span>
-                ))}
+      {/* ── Conversation turns ──────────────────────────────────────────────── */}
+      <div className="flex-1 overflow-y-auto px-3 py-2 space-y-3 min-h-0">
+        {turns.map((turn) => (
+          <div key={turn.id} className="space-y-1.5">
+            {/* User question — full width */}
+            <div className="flex justify-end">
+              <div className="max-w-[90%] bg-indigo-600 text-white rounded-2xl rounded-tr-sm px-3 py-2 text-[11px] leading-relaxed shadow-md shadow-indigo-900/40">
+                {turn.question}
               </div>
-            )}
+            </div>
 
-            {/* Bubble */}
-            <div className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-              <div
-                className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 text-[12px] leading-relaxed whitespace-pre-wrap ${
-                  msg.role === "user"
-                    ? "bg-indigo-600 text-white rounded-tr-sm shadow-md shadow-indigo-900/40"
-                    : "bg-slate-800/80 border border-slate-700/50 text-slate-200 rounded-tl-sm"
-                }`}
-              >
-                {msg.text}
-              </div>
+            {/* Model responses — two columns */}
+            <div className="grid grid-cols-2 gap-1.5">
+              <ResponseCell r={turn.llama} />
+              <ResponseCell r={turn.qwen} />
             </div>
           </div>
         ))}
-
-        {/* Loading indicator */}
-        {loading && (
-          <div className="flex justify-start">
-            <div className="bg-slate-800/80 border border-slate-700/50 rounded-2xl rounded-tl-sm px-4 py-3">
-              <div className="flex gap-1.5 items-center">
-                {[0, 1, 2].map((i) => (
-                  <span
-                    key={i}
-                    className="w-1.5 h-1.5 rounded-full bg-slate-400 inline-block animate-bounce"
-                    style={{ animationDelay: `${i * 0.15}s` }}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
         <div ref={bottomRef} />
       </div>
 
-      {/* ── Input row ─────────────────────────────────────────────────────── */}
-      <div className="flex-none px-4 pb-4 pt-2 border-t border-slate-800/60">
+      {/* ── Input row ──────────────────────────────────────────────────────── */}
+      <div className="flex-none px-3 pb-3 pt-2 border-t border-slate-800/60">
         <div className="flex items-center gap-2">
           <input
             ref={inputRef}
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKey}
-            placeholder="Ask about this neighborhood…"
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(input); } }}
+            placeholder="Ask both models…"
             disabled={loading}
-            className="flex-1 min-w-0 bg-slate-800/60 border border-slate-700/60 text-slate-100 text-[13px] rounded-xl px-3.5 py-2.5 placeholder-slate-500 focus:outline-none focus:border-cyan-400/50 disabled:opacity-50 transition-colors"
+            className="flex-1 min-w-0 bg-slate-800/60 border border-slate-700/60 text-slate-100 text-[12px] rounded-xl px-3 py-2.5 placeholder-slate-500 focus:outline-none focus:border-cyan-400/50 disabled:opacity-50 transition-colors"
           />
           <button
             onClick={() => send(input)}
             disabled={!input.trim() || loading}
-            aria-label="Send"
-            className="flex-none w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-emerald-400 text-black flex items-center justify-center disabled:opacity-35 disabled:cursor-not-allowed active:scale-95 transition-all"
+            aria-label="Send to both models"
+            className="flex-none w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-500 to-emerald-400 text-black flex items-center justify-center disabled:opacity-35 disabled:cursor-not-allowed active:scale-95 transition-all"
           >
-            <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M12 5l7 7-7 7" />
             </svg>
           </button>

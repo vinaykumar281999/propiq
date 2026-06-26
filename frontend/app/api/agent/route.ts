@@ -469,9 +469,10 @@ async function ollamaAgentLoop(
   neighborhood: string,
   lat: number | null,
   lng: number | null,
+  modelOverride?: string,
 ): Promise<{ answer: string; tools_called: string[] }> {
   const base  = process.env.OLLAMA_BASE_URL ?? "http://localhost:11434";
-  const model = process.env.OLLAMA_MODEL    ?? "llama3.2";
+  const model = modelOverride ?? process.env.OLLAMA_MODEL ?? "llama3.2";
 
   const messages: OllamaMessage[] = [
     { role: "system",    content: buildSystemPrompt(neighborhood, lat, lng) },
@@ -523,9 +524,10 @@ export async function POST(req: NextRequest) {
     lat: number | null;
     lng: number | null;
     history: SimpleMessage[];
+    model?: string;
   };
 
-  const { message, neighborhood, lat, lng, history = [] } = body;
+  const { message, neighborhood, lat, lng, history = [], model: requestedModel } = body;
 
   if (!message?.trim() || !neighborhood) {
     return NextResponse.json({ error: "message and neighborhood are required" }, { status: 400 });
@@ -543,7 +545,7 @@ export async function POST(req: NextRequest) {
     let result: { answer: string; tools_called: string[] };
 
     if (preferOllama) {
-      result = await ollamaAgentLoop(message, history, neighborhood, lat, lng);
+      result = await ollamaAgentLoop(message, history, neighborhood, lat, lng, requestedModel);
     } else {
       try {
         result = await claudeAgentLoop(message, history, neighborhood, lat, lng);
@@ -552,7 +554,7 @@ export async function POST(req: NextRequest) {
         const errMsg = err instanceof Error ? err.message : "";
         if (errMsg.includes("credit balance") || errMsg.includes("too low") || errMsg.includes("quota")) {
           backend = "ollama";
-          result = await ollamaAgentLoop(message, history, neighborhood, lat, lng);
+          result = await ollamaAgentLoop(message, history, neighborhood, lat, lng, requestedModel);
         } else {
           throw err;
         }
