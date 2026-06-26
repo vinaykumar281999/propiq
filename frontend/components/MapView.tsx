@@ -12,6 +12,7 @@ import {
   fetchAmenitiesInBounds,
   fetchDemographicsBatch,
 } from "@/lib/api";
+import type { EvaluationMarker } from "@/app/api/evaluate/route";
 
 function LegendRow({ color, label, round = false }: { color: string; label: string; round?: boolean }) {
   return (
@@ -30,6 +31,7 @@ interface Props {
   selected: Property | null;
   onSelect: (p: Property) => void;
   visible: boolean;
+  evaluationMarkers?: EvaluationMarker[];
 }
 
 type OverlayMode = "score" | "income" | "population" | "under18";
@@ -96,11 +98,32 @@ function tooltipHtml(p: Property): string {
 
 // ── component ───────────────────────────────────────────────────────────────
 
-export default function MapView({ properties, selected, onSelect, visible }: Props) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef       = useRef<any | null>(null);
-  const polygonsRef  = useRef<Map<number, any>>(new Map());
-  const amenityLayerRef = useRef<any | null>(null);
+function evalMarkerColor(type: EvaluationMarker["markerType"]): string {
+  if (type === "school")     return "#3b82f6"; // blue
+  if (type === "hospital")   return "#ef4444"; // red
+  if (type === "park")       return "#22c55e"; // green
+  if (type === "waterfront") return "#06b6d4"; // cyan
+  if (type === "transit")    return "#a855f7"; // purple
+  if (type === "premium")    return "#f59e0b"; // gold
+  return "#94a3b8";                            // slate (lifestyle)
+}
+
+function evalMarkerEmoji(type: EvaluationMarker["markerType"]): string {
+  if (type === "school")     return "🎓";
+  if (type === "hospital")   return "🏥";
+  if (type === "park")       return "🌳";
+  if (type === "waterfront") return "🌊";
+  if (type === "transit")    return "🚇";
+  if (type === "premium")    return "⭐";
+  return "📍";
+}
+
+export default function MapView({ properties, selected, onSelect, visible, evaluationMarkers }: Props) {
+  const containerRef     = useRef<HTMLDivElement>(null);
+  const mapRef           = useRef<any | null>(null);
+  const polygonsRef      = useRef<Map<number, any>>(new Map());
+  const amenityLayerRef  = useRef<any | null>(null);
+  const evalLayerRef     = useRef<any | null>(null);
 
   const [overlay, setOverlay]     = useState<OverlayMode>("score");
   const [showAmenities, setShowAmenities] = useState(false);
@@ -218,6 +241,44 @@ export default function MapView({ properties, selected, onSelect, visible }: Pro
     });
   }, [showAmenities, amenities, amenityTypes]);
 
+  // Draw / remove evaluation markers when they arrive
+  useEffect(() => {
+    if (!mapRef.current) return;
+    import("leaflet").then((mod) => {
+      const L = mod.default;
+
+      if (evalLayerRef.current) {
+        evalLayerRef.current.remove();
+        evalLayerRef.current = null;
+      }
+
+      if (!evaluationMarkers?.length) return;
+
+      const group = L.layerGroup();
+      evaluationMarkers.forEach((m) => {
+        const color = evalMarkerColor(m.markerType);
+        const marker = L.circleMarker([m.lat, m.lng], {
+          radius:      7,
+          color,
+          fillColor:   color,
+          fillOpacity: 0.9,
+          weight:      2,
+        });
+        marker.bindTooltip(
+          `<div class="propiq-tip">
+             <div class="propiq-tip-name" style="font-size:11px">${evalMarkerEmoji(m.markerType)} ${m.name}</div>
+             <div class="propiq-tip-meta">${m.distance_km}km · ${m.markerType}</div>
+           </div>`,
+          { className: "propiq-tooltip", sticky: true },
+        );
+        group.addLayer(marker);
+      });
+
+      group.addTo(mapRef.current);
+      evalLayerRef.current = group;
+    });
+  }, [evaluationMarkers]);
+
   // Initialise Leaflet map once on mount
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -306,6 +367,7 @@ export default function MapView({ properties, selected, onSelect, visible }: Pro
         mapRef.current.remove();
         mapRef.current  = null;
         amenityLayerRef.current = null;
+        evalLayerRef.current = null;
         polygonsRef.current.clear();
       }
     };

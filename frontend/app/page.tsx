@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, useCallback, useRef } from "react";
+import dynamic from "next/dynamic";
 import {
   fetchProperties, fetchMetros, Property,
   formatMoney, investmentScore, PERIODS,
@@ -7,6 +8,12 @@ import {
 import NeighborhoodList from "@/components/NeighborhoodList";
 import MapView from "@/components/MapView";
 import AddressSearch from "@/components/AddressSearch";
+import type { EvaluationMarker } from "@/app/api/evaluate/route";
+
+const NeighborhoodEvaluator = dynamic(
+  () => import("@/components/NeighborhoodEvaluator"),
+  { ssr: false },
+);
 
 const DEFAULT_METRO = "Denver, CO metro area";
 
@@ -33,10 +40,12 @@ export default function Home() {
   const [selected, setSelected]           = useState<Property | null>(null);
   const [search, setSearch]               = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
-  const [calcPeriod, setCalcPeriod]       = useState(12);
-  const [calcAmount, setCalcAmount]       = useState(500000);
-  const [loading, setLoading]             = useState(true);
-  const [error, setError]                 = useState("");
+  const [calcPeriod, setCalcPeriod]         = useState(12);
+  const [calcAmount, setCalcAmount]         = useState(500000);
+  const [loading, setLoading]               = useState(true);
+  const [error, setError]                   = useState("");
+  const [showEvaluator, setShowEvaluator]   = useState(false);
+  const [evalMarkers, setEvalMarkers]       = useState<EvaluationMarker[]>([]);
   const searchContainerRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
@@ -54,6 +63,12 @@ export default function Home() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Reset evaluator when selection changes
+  useEffect(() => {
+    setShowEvaluator(false);
+    setEvalMarkers([]);
+  }, [selected]);
 
   // Close neighborhood autocomplete when clicking outside
   useEffect(() => {
@@ -311,6 +326,16 @@ export default function Home() {
                   <p className="text-[10px] text-slate-600 mt-0.5">Select a neighborhood to calculate</p>
                 )}
               </div>
+
+              {/* Deep analysis CTA */}
+              {selected && selected.lat && selected.lng && (
+                <button
+                  onClick={() => setShowEvaluator(true)}
+                  className="w-full mt-1 py-2.5 rounded-xl text-[11px] font-bold tracking-wide transition-all bg-gradient-to-r from-cyan-500/15 to-emerald-500/10 border border-cyan-500/30 text-cyan-400 hover:from-cyan-500/25 hover:to-emerald-500/20 hover:border-cyan-400/50 flex items-center justify-center gap-2"
+                >
+                  <span>⚡</span> Deep Neighborhood Analysis
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -336,7 +361,21 @@ export default function Home() {
             selected={selected}
             onSelect={setSelected}
             visible={true}
+            evaluationMarkers={evalMarkers}
           />
+        )}
+
+        {/* Evaluator overlay panel */}
+        {showEvaluator && selected && selected.lat && selected.lng && (
+          <div className="absolute right-0 top-0 bottom-0 w-[420px] z-[2000] overflow-hidden">
+            <NeighborhoodEvaluator
+              neighborhood={selected.name}
+              lat={selected.lat}
+              lng={selected.lng}
+              onClose={() => { setShowEvaluator(false); setEvalMarkers([]); }}
+              onEvaluationComplete={setEvalMarkers}
+            />
+          </div>
         )}
       </main>
     </div>
