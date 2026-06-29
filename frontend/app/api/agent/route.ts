@@ -580,6 +580,19 @@ export async function POST(req: NextRequest) {
     tools_called.push(...result.tools_called);
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
+    // Ollama not reachable (Vercel deployment, no local service)
+    const isConnErr =
+      msg.includes("fetch failed") ||
+      msg.includes("ECONNREFUSED") ||
+      msg.includes("connect") ||
+      msg.includes("network");
+    if (isConnErr && backend === "ollama") {
+      return NextResponse.json({
+        answer: "The AI agent requires a local Ollama installation or Anthropic API credits. This feature works in the local development version.",
+        tools_called: [],
+        backend: "unavailable",
+      });
+    }
     return NextResponse.json({ error: `Agent error (${backend}): ${msg}`, tools_called }, { status: 500 });
   }
 

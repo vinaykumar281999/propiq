@@ -58,6 +58,7 @@ export interface NeighborhoodEvaluation {
   risk_factors: string[];
   agent_summary: string;
   evaluation_markers: EvaluationMarker[];
+  overpass_ok?: boolean;
 }
 
 // ── Geometry ──────────────────────────────────────────────────────────────────
@@ -76,21 +77,38 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
 
 // ── Overpass helpers ──────────────────────────────────────────────────────────
 
-async function queryOverpass(query: string): Promise<OverpassEl[]> {
+async function queryOverpass(query: string, attempt = 1): Promise<OverpassEl[]> {
   try {
     const res = await fetch(OVERPASS_URL, {
       method: "POST",
       headers: {
+        "User-Agent":   "PropIQ/1.0 real estate analyzer",
+        "Accept":       "application/json",
         "Content-Type": "application/x-www-form-urlencoded",
-        "User-Agent": "PropIQ/1.0 neighborhood evaluator",
       },
       body: `data=${encodeURIComponent(query)}`,
-      signal: AbortSignal.timeout(27000),
+      signal: AbortSignal.timeout(25000),
     });
-    if (!res.ok) return [];
-    const data = await res.json();
-    return (data.elements as OverpassEl[]) || [];
+    if (!res.ok) {
+      if (attempt < 2) {
+        await new Promise((r) => setTimeout(r, 1500));
+        return queryOverpass(query, 2);
+      }
+      return [];
+    }
+    const data = await res.json() as { elements?: OverpassEl[] };
+    const elements = data.elements ?? [];
+    // Retry once if Overpass returned an empty payload (possible transient issue)
+    if (elements.length === 0 && attempt < 2) {
+      await new Promise((r) => setTimeout(r, 1500));
+      return queryOverpass(query, 2);
+    }
+    return elements;
   } catch {
+    if (attempt < 2) {
+      await new Promise((r) => setTimeout(r, 1500));
+      return queryOverpass(query, 2);
+    }
     return [];
   }
 }
@@ -472,6 +490,7 @@ export async function GET(request: NextRequest) {
 
   // 2. Single combined Overpass query (avoids rate limiting)
   const allElements = await queryOverpass(combinedQuery(lat, lng));
+  const overpassOk  = allElements.length > 0;
   const { schools, healthcare, lifestyle, premium } = partitionElements(allElements, lat, lng);
 
   // 3. Score each dimension
@@ -575,6 +594,7 @@ export async function GET(request: NextRequest) {
     risk_factors:             reasoning.risk_factors   ?? [],
     agent_summary:            reasoning.agent_summary  ?? "",
     evaluation_markers: evaluationMarkers,
+    overpass_ok: overpassOk,
   };
 
   return NextResponse.json(response);

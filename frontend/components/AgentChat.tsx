@@ -148,10 +148,17 @@ function ResponseCell({ r }: { r: ModelResponse }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function AgentChat({ neighborhood, lat, lng }: Props) {
-  const [turns, setTurns]   = useState<Turn[]>([]);
-  const [input, setInput]   = useState("");
-  const inputRef            = useRef<HTMLInputElement>(null);
-  const bottomRef           = useRef<HTMLDivElement>(null);
+  const [turns, setTurns]     = useState<Turn[]>([]);
+  const [input, setInput]     = useState("");
+  const [isRemote, setIsRemote] = useState(false);
+  const inputRef              = useRef<HTMLInputElement>(null);
+  const bottomRef             = useRef<HTMLDivElement>(null);
+
+  // Detect Vercel / remote deployment — Ollama is only reachable on localhost
+  useEffect(() => {
+    const host = window.location.hostname;
+    setIsRemote(host !== "localhost" && host !== "127.0.0.1");
+  }, []);
 
   const loading = turns.some((t) => t.llama.loading || t.qwen.loading);
 
@@ -197,6 +204,32 @@ export default function AgentChat({ neighborhood, lat, lng }: Props) {
   };
 
   const lastTurn = turns.at(-1);
+
+  // On Vercel / remote deployments, Ollama isn't reachable — show a static notice
+  if (isRemote) {
+    return (
+      <div className="flex flex-col h-full items-center justify-center px-5 py-6 text-center gap-3">
+        <div className="w-10 h-10 rounded-2xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center text-xl">
+          💡
+        </div>
+        <div className="space-y-1">
+          <p className="text-[12px] font-bold text-slate-200">
+            AI Agent — local mode only
+          </p>
+          <p className="text-[11px] text-slate-400 leading-relaxed max-w-[260px]">
+            Running on your Mac with Ollama, this chat lets you ask questions about any neighborhood in real time.
+          </p>
+        </div>
+        <div className="mt-1 px-3 py-2 rounded-xl bg-slate-800/60 border border-slate-700/50 text-left max-w-[260px]">
+          <p className="text-[10px] font-semibold text-slate-400 mb-1">To enable locally:</p>
+          <p className="text-[10px] text-slate-500 font-mono leading-relaxed">
+            ollama serve<br />
+            npm run dev
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full">
