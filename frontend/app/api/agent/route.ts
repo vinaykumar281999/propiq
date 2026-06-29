@@ -256,6 +256,28 @@ interface OllamaApiResponse {
   done_reason?: string;
 }
 
+// ── Groq types (OpenAI-compatible, arguments arrive as JSON string) ───────────
+
+interface GroqToolCall {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+}
+
+interface GroqMessage {
+  role: "system" | "user" | "assistant" | "tool";
+  content: string | null;
+  tool_calls?: GroqToolCall[];
+  tool_call_id?: string;
+}
+
+interface GroqApiResponse {
+  choices: Array<{
+    message: GroqMessage;
+    finish_reason: string;
+  }>;
+}
+
 // ── Tool definitions ──────────────────────────────────────────────────────────
 
 const TOOLS: Anthropic.Tool[] = [
@@ -530,6 +552,61 @@ async function ollamaAgentLoop(
   return { answer: final_answer, tools_called };
 }
 
+async function groqAgentLoop(
+  message: string,
+  history: SimpleMessage[],
+  neighborhood: string,
+  lat: number | null,
+  lng: number | null,
+): Promise<{ answer: string; tools_called: string[] }> {
+  const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
+  const model    = "llama-3.3-70b-versatile";
+
+  const messages: GroqMessage[] = [
+    { role: "system", content: buildSystemPrompt(neighborhood, lat, lng) },
+    ...history.map((h) => ({ role: h.role as "user" | "assistant", content: h.content })),
+    { role: "user",   content: message },
+  ];
+
+  const tools_called: string[] = [];
+  let final_answer = "";
+
+  for (let i = 0; i < 10; i++) {
+    const res = await fetch(GROQ_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type":  "application/json",
+        "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
+      },
+      body: JSON.stringify({ model, messages, tools: OLLAMA_TOOLS, stream: false }),
+      signal: AbortSignal.timeout(55000),
+    });
+    if (!res.ok) throw new Error(`Groq ${res.status}: ${await res.text()}`);
+
+    const data = await res.json() as GroqApiResponse;
+    const msg  = data.choices?.[0]?.message;
+    if (!msg) break;
+
+    if (msg.tool_calls && msg.tool_calls.length > 0) {
+      messages.push({ role: "assistant", content: msg.content ?? "", tool_calls: msg.tool_calls });
+      for (const call of msg.tool_calls) {
+        const name = call.function.name;
+        tools_called.push(name);
+        // Groq returns arguments as a JSON string; parse before dispatching
+        const args = JSON.parse(call.function.arguments) as Record<string, unknown>;
+        const result = await executeTool(name, args);
+        messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(result) });
+      }
+      continue;
+    }
+
+    final_answer = msg.content?.trim() ?? "";
+    break;
+  }
+
+  return { answer: final_answer, tools_called };
+}
+
 // ── POST handler ──────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
@@ -548,39 +625,51 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "message and neighborhood are required" }, { status: 400 });
   }
 
-  // Pick backend: explicit flag, missing key, or auto-fallback on credit error
-  const preferOllama =
-    process.env.OLLAMA_FALLBACK === "true" || !process.env.ANTHROPIC_API_KEY;
+  // Backend priority:
+  //   requestedModel set  → always Ollama (it's an Ollama-specific model name)
+  //   ANTHROPIC_API_KEY   → Claude
+  //   GROQ_API_KEY        → Groq (free cloud Llama)
+  //   else                → Ollama
+  const hasAnthropic = !!process.env.ANTHROPIC_API_KEY && process.env.OLLAMA_FALLBACK !== "true";
+  const hasGroq      = !!process.env.GROQ_API_KEY;
+  const forceOllama  = !!requestedModel;
 
   const tools_called: string[] = [];
   let final_answer = "";
-  let backend = preferOllama ? "ollama" : "claude";
+  let backend: "claude" | "groq" | "ollama" =
+    forceOllama  ? "ollama" :
+    hasAnthropic ? "claude" :
+    hasGroq      ? "groq"   :
+                   "ollama";
 
   try {
     let result: { answer: string; tools_called: string[] };
 
-    if (preferOllama) {
-      result = await ollamaAgentLoop(message, history, neighborhood, lat, lng, requestedModel);
-    } else {
+    if (backend === "claude") {
       try {
         result = await claudeAgentLoop(message, history, neighborhood, lat, lng);
       } catch (err) {
-        // Auto-fallback when Anthropic account has no credits
         const errMsg = err instanceof Error ? err.message : "";
         if (errMsg.includes("credit balance") || errMsg.includes("too low") || errMsg.includes("quota")) {
-          backend = "ollama";
-          result = await ollamaAgentLoop(message, history, neighborhood, lat, lng, requestedModel);
+          // Fallback: Groq if available, else Ollama
+          backend = hasGroq ? "groq" : "ollama";
+          result  = backend === "groq"
+            ? await groqAgentLoop(message, history, neighborhood, lat, lng)
+            : await ollamaAgentLoop(message, history, neighborhood, lat, lng, requestedModel);
         } else {
           throw err;
         }
       }
+    } else if (backend === "groq") {
+      result = await groqAgentLoop(message, history, neighborhood, lat, lng);
+    } else {
+      result = await ollamaAgentLoop(message, history, neighborhood, lat, lng, requestedModel);
     }
 
-    final_answer    = result.answer;
+    final_answer = result.answer;
     tools_called.push(...result.tools_called);
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
-    // Ollama not reachable (Vercel deployment, no local service)
     const isConnErr =
       msg.includes("fetch failed") ||
       msg.includes("ECONNREFUSED") ||

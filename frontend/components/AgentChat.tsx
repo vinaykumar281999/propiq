@@ -29,6 +29,9 @@ interface Props {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
+// When true, left tab sends requests to Groq (cloud); right tab uses Ollama (local)
+const USE_GROQ = process.env.NEXT_PUBLIC_USE_GROQ === "true";
+
 const SUGGESTIONS = [
   "Good for families?",
   "Monthly mortgage on $500K?",
@@ -238,10 +241,12 @@ export default function AgentChat({ neighborhood, lat, lng }: Props) {
     }, 30000);
 
     await Promise.allSettled([
-      fetchModel(question, "llama3.2", llamaHistory, neighborhood, lat, lng)
+      // Left tab: no model override when USE_GROQ (backend picks Groq); "llama3.2" otherwise
+      fetchModel(question, USE_GROQ ? undefined : "llama3.2", llamaHistory, neighborhood, lat, lng)
         .then((r) => update(id, "llama", { text: r.answer, tools: r.tools_called, loading: false, ms: r.ms, isError: r.isError }))
         .catch((e) => update(id, "llama", { text: `Error: ${e instanceof Error ? e.message : e}`, tools: [], loading: false, ms: null, isError: true })),
-      fetchModel(question, "qwen3.5",  qwenHistory,  neighborhood, lat, lng, 90000)
+      // Right tab: always Ollama (llama3.2), 90s timeout for larger local model
+      fetchModel(question, "llama3.2", qwenHistory, neighborhood, lat, lng, 90000)
         .then((r) => { clearTimeout(qwenSlowTimer); update(id, "qwen", { text: r.answer, tools: r.tools_called, loading: false, ms: r.ms, isError: r.isError, statusText: undefined }); })
         .catch((e) => { clearTimeout(qwenSlowTimer); update(id, "qwen", { text: `Error: ${e instanceof Error ? e.message : e}`, tools: [], loading: false, ms: null, isError: true, statusText: undefined }); }),
     ]);
@@ -268,13 +273,17 @@ export default function AgentChat({ neighborhood, lat, lng }: Props) {
           <TimingBadge r={lastTurn?.llama} />
         </div>
       ) : (
-        // Dual Ollama tabs
+        // Dual tabs: Groq (Cloud) + Ollama (Local) when USE_GROQ, else Llama + Qwen
         <div className="flex-none grid grid-cols-2 border-b border-slate-800/60 bg-slate-900/50">
-          {(
-            [
-              { key: "llama" as const, label: "Llama 3.2", color: "text-orange-400", border: "border-orange-500/40" },
-              { key: "qwen"  as const, label: "Qwen 3.5",  color: "text-cyan-400",   border: "border-cyan-500/40"   },
-            ] as const
+          {(USE_GROQ
+            ? [
+                { key: "llama" as const, label: "Groq (Cloud)",   color: "text-green-400",  border: "border-green-500/40"  },
+                { key: "qwen"  as const, label: "Ollama (Local)",  color: "text-orange-400", border: "border-orange-500/40" },
+              ]
+            : [
+                { key: "llama" as const, label: "Llama 3.2",      color: "text-orange-400", border: "border-orange-500/40" },
+                { key: "qwen"  as const, label: "Qwen 3.5",       color: "text-cyan-400",   border: "border-cyan-500/40"   },
+              ]
           ).map(({ key, label, color, border }) => (
             <div
               key={key}
