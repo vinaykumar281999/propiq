@@ -73,11 +73,10 @@ async function toolGetPriceData(neighborhood: string) {
   try {
     const sql = neon(process.env.DATABASE_URL!);
 
-    // ILIKE fuzzy match — tolerates apostrophes, extra words, and casing differences
     const rows = await sql`
       SELECT name, price, expected_return, days_on_market
       FROM neighborhoods
-      WHERE name ILIKE ${"%" + neighborhood + "%"}
+      WHERE name ILIKE '%' || ${neighborhood} || '%'
       ORDER BY name
       LIMIT 3
     `;

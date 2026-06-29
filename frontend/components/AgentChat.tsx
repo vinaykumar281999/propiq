@@ -10,6 +10,7 @@ interface ModelResponse {
   tools: string[];
   loading: boolean;
   ms: number | null;
+  isError?: boolean;
 }
 
 interface Turn {
@@ -67,19 +68,32 @@ async function fetchModel(
   neighborhood: string,
   lat: number | null,
   lng: number | null,
-): Promise<{ answer: string; tools_called: string[]; ms: number }> {
+): Promise<{ answer: string; tools_called: string[]; ms: number; isError?: boolean }> {
   const t0 = Date.now();
-  const res = await fetch("/api/agent", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message: question, neighborhood, lat, lng, model: modelId, history }),
-  });
-  const data = await res.json() as { answer?: string; error?: string; tools_called?: string[] };
-  return {
-    answer:      data.answer || data.error || "No response.",
-    tools_called: data.tools_called ?? [],
-    ms:          Date.now() - t0,
-  };
+  const label = modelId.toLowerCase().includes("qwen") ? "Qwen" : "Llama";
+  try {
+    const res = await fetch("/api/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: question, neighborhood, lat, lng, model: modelId, history }),
+      signal: AbortSignal.timeout(60000),
+    });
+    const data = await res.json() as { answer?: string; error?: string; tools_called?: string[] };
+    const answer = data.answer || data.error || "";
+    if (!answer) {
+      return { answer: `${label} timed out — try again`, tools_called: [], ms: Date.now() - t0, isError: true };
+    }
+    return { answer, tools_called: data.tools_called ?? [], ms: Date.now() - t0 };
+  } catch (e) {
+    const ms = Date.now() - t0;
+    const isTimeout = e instanceof Error && (e.name === "AbortError" || e.name === "TimeoutError");
+    return {
+      answer:      isTimeout ? `${label} timed out — try again` : `Error: ${e instanceof Error ? e.message : e}`,
+      tools_called: [],
+      ms,
+      isError:     true,
+    };
+  }
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -116,13 +130,13 @@ function ToolPills({ tools }: { tools: string[] }) {
 
 function ResponseCell({ r }: { r: ModelResponse }) {
   return (
-    <div className="bg-slate-800/70 border border-slate-700/50 rounded-xl p-2.5 min-h-[48px]">
+    <div className={`rounded-xl p-2.5 min-h-[48px] border ${r.isError ? "bg-red-950/30 border-red-800/40" : "bg-slate-800/70 border-slate-700/50"}`}>
       {r.loading ? (
         <Dots />
       ) : (
         <>
           <ToolPills tools={r.tools} />
-          <p className="text-[11px] leading-relaxed text-slate-200 whitespace-pre-wrap break-words">
+          <p className={`text-[11px] leading-relaxed whitespace-pre-wrap break-words ${r.isError ? "text-red-400" : "text-slate-200"}`}>
             {r.text}
           </p>
         </>
@@ -171,12 +185,12 @@ export default function AgentChat({ neighborhood, lat, lng }: Props) {
 
     await Promise.allSettled([
       fetchModel(question, "llama3.2",   llamaHistory, neighborhood, lat, lng)
-        .then((r) => update("llama", { text: r.answer, tools: r.tools_called, loading: false, ms: r.ms }))
-        .catch((e) => update("llama", { text: `Error: ${e instanceof Error ? e.message : e}`, tools: [], loading: false, ms: null })),
+        .then((r) => update("llama", { text: r.answer, tools: r.tools_called, loading: false, ms: r.ms, isError: r.isError }))
+        .catch((e) => update("llama", { text: `Error: ${e instanceof Error ? e.message : e}`, tools: [], loading: false, ms: null, isError: true })),
 
       fetchModel(question, "qwen3.5",    qwenHistory,  neighborhood, lat, lng)
-        .then((r) => update("qwen",  { text: r.answer, tools: r.tools_called, loading: false, ms: r.ms }))
-        .catch((e) => update("qwen",  { text: `Error: ${e instanceof Error ? e.message : e}`, tools: [], loading: false, ms: null })),
+        .then((r) => update("qwen",  { text: r.answer, tools: r.tools_called, loading: false, ms: r.ms, isError: r.isError }))
+        .catch((e) => update("qwen",  { text: `Error: ${e instanceof Error ? e.message : e}`, tools: [], loading: false, ms: null, isError: true })),
     ]);
 
     inputRef.current?.focus();
