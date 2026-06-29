@@ -20,6 +20,11 @@ const MobileBottomSheet = dynamic(
   { ssr: false },
 );
 
+const TimingAdvisor = dynamic(
+  () => import("@/components/TimingAdvisor"),
+  { ssr: false },
+);
+
 const DEFAULT_METRO = "Denver, CO metro area";
 
 function KpiCard({
@@ -342,6 +347,13 @@ export default function Home() {
                 </button>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Timing Advisor — shown when a neighborhood is selected */}
+        {!loading && !error && selected && (
+          <div className="flex-none border-t border-slate-800/60 max-h-[260px] overflow-y-auto bg-[#0F1322]/80">
+            <TimingAdvisor property={selected} />
           </div>
         )}
 
