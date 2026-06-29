@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import {
   fetchProperties, fetchMetros, Property,
   formatMoney, investmentScore, PERIODS,
@@ -138,13 +139,21 @@ export default function Home() {
                 </span>
               </div>
             </div>
-            <button
-              onClick={load}
-              title="Reload data"
-              className="text-slate-500 hover:text-emerald-400 border border-slate-700/50 rounded-lg px-2.5 py-1.5 text-xs transition-colors"
-            >
-              ↺
-            </button>
+            <div className="flex items-center gap-2">
+              <Link
+                href="/timing"
+                className="text-slate-400 hover:text-cyan-400 border border-slate-700/50 hover:border-cyan-500/40 rounded-lg px-2.5 py-1.5 text-[10px] font-semibold transition-all whitespace-nowrap"
+              >
+                ⏱ Timing
+              </Link>
+              <button
+                onClick={load}
+                title="Reload data"
+                className="text-slate-500 hover:text-emerald-400 border border-slate-700/50 rounded-lg px-2.5 py-1.5 text-xs transition-colors"
+              >
+                ↺
+              </button>
+            </div>
           </div>
 
           <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 block mb-1.5">
