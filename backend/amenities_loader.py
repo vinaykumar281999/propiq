@@ -15,7 +15,10 @@ OVERPASS_URL   = "https://overpass.kumi.systems/api/interpreter"
 HEADERS        = {"User-Agent": "PropIQ/1.0 (property investment research tool)"}
 # Colorado state bounding box: (south, west, north, east)
 COLORADO_BBOX  = (36.9, -109.1, 41.1, -102.0)
-AMENITY_TYPES  = ["gas_station", "school", "hospital"]
+# OSM uses amenity=fuel for gas stations; we normalise to "gas_station" for display.
+OSM_QUERY_TAGS = ["fuel", "school", "hospital"]   # values used in the Overpass query
+OSM_NORMALISE  = {"fuel": "gas_station"}           # fuel → gas_station on ingest
+AMENITY_TYPES  = ["gas_station", "school", "hospital"]  # stored / display values
 
 
 def fetch(bbox: tuple = COLORADO_BBOX) -> dict[str, list]:
@@ -24,8 +27,8 @@ def fetch(bbox: tuple = COLORADO_BBOX) -> dict[str, list]:
     query = f"""
 [out:json][timeout:120];
 (
-  node["amenity"~"{'|'.join(AMENITY_TYPES)}"]({s},{w},{n},{e});
-  way["amenity"~"{'|'.join(AMENITY_TYPES)}"]({s},{w},{n},{e});
+  node["amenity"~"{'|'.join(OSM_QUERY_TAGS)}"]({s},{w},{n},{e});
+  way["amenity"~"{'|'.join(OSM_QUERY_TAGS)}"]({s},{w},{n},{e});
 );
 out center;
 """
@@ -40,7 +43,8 @@ out center;
         # nodes have lat/lon directly; ways have a 'center' object
         lat = el.get("lat") or (el.get("center") or {}).get("lat")
         lng = el.get("lon") or (el.get("center") or {}).get("lon")
-        atype = el.get("tags", {}).get("amenity")
+        raw_type = el.get("tags", {}).get("amenity")
+        atype = OSM_NORMALISE.get(raw_type, raw_type)  # fuel → gas_station
         if lat and lng and atype in AMENITY_TYPES:
             by_type[atype].append({
                 "osm_id": el["id"],

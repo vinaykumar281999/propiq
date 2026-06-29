@@ -56,7 +56,9 @@ function parseLocations(elements: OverpassEl[], originLat: number, originLng: nu
       if (lat == null || lng == null) return null;
       const t = el.tags ?? {};
       const name = t.name || t.amenity || t.leisure || t.shop || t.waterway || el.type;
-      const type = t.amenity || t.leisure || t.shop || t.waterway || t.railway || "unknown";
+      const rawType = t.amenity || t.leisure || t.shop || t.waterway || t.railway || "unknown";
+      // OSM uses amenity=fuel; normalise to gas_station for display
+      const type = rawType === "fuel" ? "gas_station" : rawType;
       return { name, type, lat, lng, distance_km: Math.round(haversineKm(originLat, originLng, lat, lng) * 100) / 100 };
     })
     .filter(Boolean)
@@ -159,6 +161,7 @@ async function toolGetLifestyleAmenities(lat: number, lng: number, radius_km: nu
 node["amenity"="restaurant"](around:${r},${lat},${lng});
 node["amenity"="cafe"](around:${r},${lat},${lng});
 node["amenity"="bar"](around:${r},${lat},${lng});
+node["amenity"="fuel"](around:${r},${lat},${lng});
 node["leisure"="fitness_centre"](around:${r},${lat},${lng});
 node["leisure"="park"](around:${r},${lat},${lng});
 way["leisure"="park"](around:${r},${lat},${lng});

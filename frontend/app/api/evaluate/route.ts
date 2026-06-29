@@ -114,7 +114,7 @@ function parseLocations(
         t.waterway ||
         t.railway ||
         el.type;
-      const type =
+      const rawType =
         t.amenity ||
         t.leisure ||
         t.shop ||
@@ -123,6 +123,8 @@ function parseLocations(
         t.public_transport ||
         t.natural ||
         "unknown";
+      // OSM uses amenity=fuel; normalise to gas_station for display
+      const type = rawType === "fuel" ? "gas_station" : rawType;
       return {
         lat,
         lng,
@@ -151,6 +153,7 @@ node["amenity"="pharmacy"](around:1000,${lat},${lng});
 node["healthcare"="centre"](around:2000,${lat},${lng});
 node["amenity"="restaurant"](around:1000,${lat},${lng});
 node["amenity"="cafe"](around:1000,${lat},${lng});
+node["amenity"="fuel"](around:1000,${lat},${lng});
 node["leisure"="fitness_centre"](around:1000,${lat},${lng});
 node["leisure"="park"](around:500,${lat},${lng});
 way["leisure"="park"](around:500,${lat},${lng});
@@ -182,7 +185,7 @@ function partitionElements(
 
   const SCHOOL_TYPES    = new Set(["school", "university", "college"]);
   const HEALTH_TYPES    = new Set(["hospital", "clinic", "pharmacy", "centre"]);
-  const LIFESTYLE_TYPES = new Set(["restaurant", "cafe", "fitness_centre", "park", "supermarket", "mall"]);
+  const LIFESTYLE_TYPES = new Set(["restaurant", "cafe", "gas_station", "fitness_centre", "park", "supermarket", "mall"]);
   const PREMIUM_TYPES   = new Set(["golf_course", "river", "stream", "water", "station", "tram_stop", "public_transport"]);
 
   return {
