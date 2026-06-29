@@ -246,10 +246,12 @@ export default function Home() {
           </div>
         )}
 
-        {/* Neighborhood list */}
+        {/* Scrollable area: neighborhood list + calculator + timing advisor + footer */}
         <div className="flex-1 overflow-y-auto">
+
+          {/* Neighborhood list */}
           {loading ? (
-            <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-500">
+            <div className="flex flex-col items-center justify-center py-16 gap-3 text-slate-500">
               <div className="w-7 h-7 border-2 border-slate-700 border-t-emerald-400 rounded-full animate-spin" />
               <p className="text-xs">Loading markets…</p>
             </div>
@@ -271,98 +273,99 @@ export default function Home() {
               />
             </>
           )}
-        </div>
 
-        {/* Investment Calculator */}
-        {!loading && !error && (
-          <div className="flex-none border-t border-slate-800/60 px-4 pt-3 pb-4 backdrop-blur-md bg-[#0F1322]/80">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Investment Calculator</p>
-            <div className="space-y-3">
-              <div>
-                <label className="text-[10px] text-slate-400 block mb-1.5">Investment Amount</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm select-none">$</span>
-                  <input
-                    type="number"
-                    value={calcAmount}
-                    onChange={(e) => setCalcAmount(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="w-full bg-[#161B30] border border-slate-700/60 text-slate-100 text-sm rounded-lg pl-7 pr-3 py-2 focus:outline-none focus:border-emerald-400/60 transition-colors"
-                    placeholder="500000"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-[10px] text-slate-400 block mb-1.5">Time Period</label>
-                <div className="flex gap-1 flex-wrap">
-                  {PERIODS.map((p) => (
-                    <button
-                      key={p.months}
-                      onClick={() => setCalcPeriod(p.months)}
-                      className={`text-[10px] px-2.5 py-1 rounded-lg font-semibold transition-all ${
-                        calcPeriod === p.months
-                          ? "bg-gradient-to-r from-emerald-500 to-cyan-400 text-black shadow-md shadow-emerald-900/40"
-                          : "bg-[#161B30] text-slate-400 hover:text-slate-200 border border-slate-700/60"
-                      }`}
-                    >
-                      {p.short}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className={`rounded-xl p-3 border transition-all ${selected ? "bg-gradient-to-r from-emerald-950/50 to-cyan-950/40 border-emerald-800/40" : "bg-[#161B30] border-slate-700/60"}`}>
-                <p className="text-[10px] text-slate-400 mb-0.5">
-                  {selected ? `${selected.name} · ` : ""}{calcLabel} return
-                </p>
-                <p className={`text-2xl font-black leading-tight ${selected ? "bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent" : "text-slate-600"}`}>
-                  {selected ? `+${formatMoney(calcReturn)}` : "—"}
-                </p>
-                {selected && (
-                  <div className="mt-2">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-[9px] text-slate-500">ROI score</span>
-                      <span className="text-[9px] font-semibold text-slate-400">{investmentScore(selected.roi_pct)}/100</span>
-                    </div>
-                    <div className="h-1 bg-slate-800 rounded-full overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-400 transition-all duration-700"
-                        style={{ width: `${investmentScore(selected.roi_pct)}%` }}
-                      />
-                    </div>
+          {/* Investment Calculator */}
+          {!loading && !error && (
+            <div className="border-t border-slate-800/60 px-4 pt-3 pb-4 bg-[#0F1322]/80">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Investment Calculator</p>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-[10px] text-slate-400 block mb-1.5">Investment Amount</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm select-none">$</span>
+                    <input
+                      type="number"
+                      value={calcAmount}
+                      onChange={(e) => setCalcAmount(Math.max(0, parseInt(e.target.value) || 0))}
+                      className="w-full bg-[#161B30] border border-slate-700/60 text-slate-100 text-sm rounded-lg pl-7 pr-3 py-2 focus:outline-none focus:border-emerald-400/60 transition-colors"
+                      placeholder="500000"
+                    />
                   </div>
-                )}
-                {!selected && (
-                  <p className="text-[10px] text-slate-600 mt-0.5">Select a neighborhood to calculate</p>
+                </div>
+
+                <div>
+                  <label className="text-[10px] text-slate-400 block mb-1.5">Time Period</label>
+                  <div className="flex gap-1 flex-wrap">
+                    {PERIODS.map((p) => (
+                      <button
+                        key={p.months}
+                        onClick={() => setCalcPeriod(p.months)}
+                        className={`text-[10px] px-2.5 py-1 rounded-lg font-semibold transition-all ${
+                          calcPeriod === p.months
+                            ? "bg-gradient-to-r from-emerald-500 to-cyan-400 text-black shadow-md shadow-emerald-900/40"
+                            : "bg-[#161B30] text-slate-400 hover:text-slate-200 border border-slate-700/60"
+                        }`}
+                      >
+                        {p.short}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className={`rounded-xl p-3 border transition-all ${selected ? "bg-gradient-to-r from-emerald-950/50 to-cyan-950/40 border-emerald-800/40" : "bg-[#161B30] border-slate-700/60"}`}>
+                  <p className="text-[10px] text-slate-400 mb-0.5">
+                    {selected ? `${selected.name} · ` : ""}{calcLabel} return
+                  </p>
+                  <p className={`text-2xl font-black leading-tight ${selected ? "bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent" : "text-slate-600"}`}>
+                    {selected ? `+${formatMoney(calcReturn)}` : "—"}
+                  </p>
+                  {selected && (
+                    <div className="mt-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[9px] text-slate-500">ROI score</span>
+                        <span className="text-[9px] font-semibold text-slate-400">{investmentScore(selected.roi_pct)}/100</span>
+                      </div>
+                      <div className="h-1 bg-slate-800 rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-400 transition-all duration-700"
+                          style={{ width: `${investmentScore(selected.roi_pct)}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {!selected && (
+                    <p className="text-[10px] text-slate-600 mt-0.5">Select a neighborhood to calculate</p>
+                  )}
+                </div>
+
+                {/* Deep analysis CTA */}
+                {selected && selected.lat && selected.lng && (
+                  <button
+                    onClick={() => setShowEvaluator(true)}
+                    className="w-full mt-1 py-2.5 rounded-xl text-[11px] font-bold tracking-wide transition-all bg-gradient-to-r from-cyan-500/15 to-emerald-500/10 border border-cyan-500/30 text-cyan-400 hover:from-cyan-500/25 hover:to-emerald-500/20 hover:border-cyan-400/50 flex items-center justify-center gap-2"
+                  >
+                    <span>⚡</span> Deep Neighborhood Analysis
+                  </button>
                 )}
               </div>
-
-              {/* Deep analysis CTA */}
-              {selected && selected.lat && selected.lng && (
-                <button
-                  onClick={() => setShowEvaluator(true)}
-                  className="w-full mt-1 py-2.5 rounded-xl text-[11px] font-bold tracking-wide transition-all bg-gradient-to-r from-cyan-500/15 to-emerald-500/10 border border-cyan-500/30 text-cyan-400 hover:from-cyan-500/25 hover:to-emerald-500/20 hover:border-cyan-400/50 flex items-center justify-center gap-2"
-                >
-                  <span>⚡</span> Deep Neighborhood Analysis
-                </button>
-              )}
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Timing Advisor — shown when a neighborhood is selected */}
-        {!loading && !error && selected && (
-          <div className="flex-none border-t border-slate-800/60 max-h-[260px] overflow-y-auto bg-[#0F1322]/80">
-            <TimingAdvisor property={selected} />
-          </div>
-        )}
+          {/* Timing Advisor — shown when a neighborhood is selected */}
+          {!loading && !error && selected && (
+            <div className="border-t border-slate-800/60">
+              <TimingAdvisor property={selected} />
+            </div>
+          )}
 
-        {/* Footer */}
-        <div className="flex-none border-t border-slate-800/60 px-4 py-2">
-          <p className="text-[9px] text-slate-600 leading-relaxed">
-            Data: Redfin Jan–May 2026. Projections are estimates, not financial advice.
-          </p>
-        </div>
+          {/* Footer */}
+          <div className="border-t border-slate-800/60 px-4 py-2">
+            <p className="text-[9px] text-slate-600 leading-relaxed">
+              Data: Redfin Jan–May 2026. Projections are estimates, not financial advice.
+            </p>
+          </div>
+
+        </div>{/* end scrollable area */}
       </aside>
 
       {/* ── RIGHT PANEL ─────────────────────────────────────────────────────── */}
