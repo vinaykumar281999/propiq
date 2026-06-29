@@ -58,7 +58,7 @@ export interface NeighborhoodEvaluation {
   risk_factors: string[];
   agent_summary: string;
   evaluation_markers: EvaluationMarker[];
-  overpass_ok?: boolean;
+  overpass_failed?: boolean;
 }
 
 // ── Geometry ──────────────────────────────────────────────────────────────────
@@ -594,7 +594,7 @@ export async function GET(request: NextRequest) {
     risk_factors:             reasoning.risk_factors   ?? [],
     agent_summary:            reasoning.agent_summary  ?? "",
     evaluation_markers: evaluationMarkers,
-    overpass_ok: overpassOk,
+    overpass_failed: !overpassOk,
   };
 
   return NextResponse.json(response);

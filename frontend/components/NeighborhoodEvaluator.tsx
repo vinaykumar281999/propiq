@@ -262,6 +262,16 @@ export default function NeighborhoodEvaluator({
               )}
             </div>
 
+            {/* Overpass failure notice */}
+            {evaluation.overpass_failed && (
+              <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl bg-amber-950/30 border border-amber-700/40">
+                <span className="text-base leading-none mt-0.5">⚠️</span>
+                <p className="text-[11px] text-amber-300 leading-relaxed">
+                  Location data temporarily unavailable — showing price analysis only. School, healthcare, lifestyle and premium scores will update when location services recover.
+                </p>
+              </div>
+            )}
+
             {/* Radar chart */}
             <div className="bg-slate-900/60 border border-slate-800/60 rounded-2xl p-3">
               <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-2 px-1">

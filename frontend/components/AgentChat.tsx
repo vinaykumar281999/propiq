@@ -11,6 +11,7 @@ interface ModelResponse {
   loading: boolean;
   ms: number | null;
   isError?: boolean;
+  statusText?: string;
 }
 
 interface Turn {
@@ -70,6 +71,7 @@ async function fetchModel(
   neighborhood: string,
   lat: number | null,
   lng: number | null,
+  timeoutMs = 60000,
 ): Promise<{ answer: string; tools_called: string[]; ms: number; isError?: boolean }> {
   const t0 = Date.now();
   const label = !modelId ? "Claude"
@@ -86,7 +88,7 @@ async function fetchModel(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(60000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     const data = await res.json() as { answer?: string; error?: string; tools_called?: string[] };
     const answer = data.answer || data.error || "";
@@ -142,7 +144,9 @@ function ResponseCell({ r }: { r: ModelResponse }) {
   return (
     <div className={`rounded-xl p-2.5 min-h-[48px] border ${r.isError ? "bg-red-950/30 border-red-800/40" : "bg-slate-800/70 border-slate-700/50"}`}>
       {r.loading ? (
-        <Dots />
+        r.statusText
+          ? <p className="text-[11px] text-slate-400 italic">{r.statusText}</p>
+          : <Dots />
       ) : (
         <>
           <ToolPills tools={r.tools} />
@@ -221,13 +225,25 @@ export default function AgentChat({ neighborhood, lat, lng }: Props) {
     setInput("");
     const llamaHistory = historyFromTurns(turns, "llama");
     const qwenHistory  = historyFromTurns(turns, "qwen");
+
+    // After 30s, show "Still thinking…" in the Qwen cell while it keeps waiting
+    const qwenSlowTimer = setTimeout(() => {
+      setTurns((prev) =>
+        prev.map((t) =>
+          t.id === id && t.qwen.loading
+            ? { ...t, qwen: { ...t.qwen, statusText: "⏳ Still thinking…" } }
+            : t,
+        ),
+      );
+    }, 30000);
+
     await Promise.allSettled([
       fetchModel(question, "llama3.2", llamaHistory, neighborhood, lat, lng)
         .then((r) => update(id, "llama", { text: r.answer, tools: r.tools_called, loading: false, ms: r.ms, isError: r.isError }))
         .catch((e) => update(id, "llama", { text: `Error: ${e instanceof Error ? e.message : e}`, tools: [], loading: false, ms: null, isError: true })),
-      fetchModel(question, "qwen3.5",  qwenHistory,  neighborhood, lat, lng)
-        .then((r) => update(id, "qwen",  { text: r.answer, tools: r.tools_called, loading: false, ms: r.ms, isError: r.isError }))
-        .catch((e) => update(id, "qwen",  { text: `Error: ${e instanceof Error ? e.message : e}`, tools: [], loading: false, ms: null, isError: true })),
+      fetchModel(question, "qwen3.5",  qwenHistory,  neighborhood, lat, lng, 90000)
+        .then((r) => { clearTimeout(qwenSlowTimer); update(id, "qwen", { text: r.answer, tools: r.tools_called, loading: false, ms: r.ms, isError: r.isError, statusText: undefined }); })
+        .catch((e) => { clearTimeout(qwenSlowTimer); update(id, "qwen", { text: `Error: ${e instanceof Error ? e.message : e}`, tools: [], loading: false, ms: null, isError: true, statusText: undefined }); }),
     ]);
     inputRef.current?.focus();
   };
