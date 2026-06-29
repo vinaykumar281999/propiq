@@ -385,42 +385,54 @@ export default function NeighborhoodEvaluator({
             </div>
 
             {/* Value drivers */}
-            {evaluation.value_drivers_identified.length > 0 && (
-              <div>
-                <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-2">
-                  Value Drivers
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {evaluation.value_drivers_identified.map((d, i) => (
-                    <span
-                      key={i}
-                      className="text-[10px] font-semibold bg-emerald-400/10 text-emerald-400 border border-emerald-400/25 rounded-full px-2.5 py-1"
-                    >
-                      {d}
-                    </span>
-                  ))}
+            {(() => {
+              const OSM_JUNK = new Set(["way", "node", "relation", "", "unknown"]);
+              const drivers = evaluation.value_drivers_identified.filter(
+                (d) => d && !OSM_JUNK.has(d.trim().toLowerCase()),
+              );
+              return drivers.length > 0 ? (
+                <div>
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-2">
+                    Value Drivers
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {drivers.map((d, i) => (
+                      <span
+                        key={i}
+                        className="text-[10px] font-semibold bg-emerald-400/10 text-emerald-400 border border-emerald-400/25 rounded-full px-2.5 py-1"
+                      >
+                        {d}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              ) : null;
+            })()}
 
             {/* Risk factors */}
-            {evaluation.risk_factors.length > 0 && (
-              <div>
-                <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-2">
-                  Risk Factors
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {evaluation.risk_factors.map((r, i) => (
-                    <span
-                      key={i}
-                      className="text-[10px] font-semibold bg-amber-400/10 text-amber-400 border border-amber-400/25 rounded-full px-2.5 py-1"
-                    >
-                      ⚠ {r}
-                    </span>
-                  ))}
+            {(() => {
+              const OSM_JUNK = new Set(["way", "node", "relation", "", "unknown"]);
+              const risks = evaluation.risk_factors.filter(
+                (r) => r && !OSM_JUNK.has(r.trim().toLowerCase()),
+              );
+              return risks.length > 0 ? (
+                <div>
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-2">
+                    Risk Factors
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {risks.map((r, i) => (
+                      <span
+                        key={i}
+                        className="text-[10px] font-semibold bg-amber-400/10 text-amber-400 border border-amber-400/25 rounded-full px-2.5 py-1"
+                      >
+                        ⚠ {r}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              ) : null;
+            })()}
 
             {/* Footer */}
             <p className="text-[9px] text-slate-600 pb-2">

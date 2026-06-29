@@ -95,6 +95,41 @@ async function queryOverpass(query: string): Promise<OverpassEl[]> {
   }
 }
 
+// Maps raw OSM type values to human-readable names shown in the UI.
+const FRIENDLY_TYPE: Record<string, string> = {
+  school:         "School",
+  university:     "University",
+  college:        "College",
+  hospital:       "Hospital",
+  clinic:         "Clinic",
+  pharmacy:       "Pharmacy",
+  fuel:           "Gas Station",
+  gas_station:    "Gas Station",
+  restaurant:     "Restaurant",
+  cafe:           "Café",
+  bar:            "Bar",
+  park:           "Park",
+  fitness_centre: "Fitness Centre",
+  supermarket:    "Supermarket",
+  mall:           "Shopping Mall",
+  golf_course:    "Golf Course",
+  river:          "River",
+  stream:         "Stream",
+  water:          "Lake",
+  station:        "Train Station",
+  tram_stop:      "Tram Stop",
+};
+
+function friendlyLabel(t: Record<string, string | undefined>): string | null {
+  if (t.name) return t.name;
+  const rawType = t.amenity || t.leisure || t.shop || t.waterway || t.railway || t.natural;
+  if (!rawType) return null;
+  return (
+    FRIENDLY_TYPE[rawType] ??
+    rawType.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+  );
+}
+
 function parseLocations(
   elements: OverpassEl[],
   originLat: number,
@@ -106,14 +141,10 @@ function parseLocations(
       const lng = el.lon ?? el.center?.lon;
       if (lat == null || lng == null) return null;
       const t = el.tags ?? {};
-      const name =
-        t.name ||
-        t.amenity ||
-        t.leisure ||
-        t.shop ||
-        t.waterway ||
-        t.railway ||
-        el.type;
+
+      const name = friendlyLabel(t);
+      if (!name) return null;  // skip unnamed elements with no recognisable type
+
       const rawType =
         t.amenity ||
         t.leisure ||

@@ -486,7 +486,7 @@ async function ollamaAgentLoop(
   lng: number | null,
   modelOverride?: string,
 ): Promise<{ answer: string; tools_called: string[] }> {
-  const base  = process.env.OLLAMA_BASE_URL ?? "http://localhost:11434";
+  const base  = process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434";
   const model = modelOverride ?? process.env.OLLAMA_MODEL ?? "llama3.2";
 
   const messages: OllamaMessage[] = [
