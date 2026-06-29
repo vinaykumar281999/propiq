@@ -56,19 +56,25 @@ function incomeColor(income: number | null): string {
   return "#ef4444";
 }
 
+// City-level population thresholds (ACS 2024):
+//   Denver County 729K → deep indigo
+//   Aurora        402K → medium purple
+//   Lakewood      157K → light violet
 function populationColor(pop: number | null): string {
   if (!pop) return "#374151";
-  if (pop >= 5000) return "#6366f1";
-  if (pop >= 2000) return "#8b5cf6";
-  if (pop >= 1000) return "#a78bfa";
+  if (pop >= 500000) return "#6366f1";  // Denver County
+  if (pop >= 300000) return "#8b5cf6";  // Aurora
+  if (pop >= 100000) return "#a78bfa";  // Lakewood
   return "#c4b5fd";
 }
 
+// City-level youth % thresholds (ACS 2024):
+//   Aurora 22.6% → most youth → orange
+//   Denver 17.5% / Lakewood 17.1% → moderate → amber
 function under18Color(pct: number | null): string {
   if (!pct) return "#374151";
-  if (pct >= 30) return "#f97316";
-  if (pct >= 22) return "#fb923c";
-  if (pct >= 15) return "#fdba74";
+  if (pct >= 22) return "#f97316";  // Aurora
+  if (pct >= 16) return "#fdba74";  // Denver County / Lakewood
   return "#374151";
 }
 
@@ -484,20 +490,18 @@ export default function MapView({ properties, selected, onSelect, visible, evalu
         )}
         {overlay === "population" && (
           <>
-            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-2">Population</p>
-            <LegendRow color="#6366f1" label="5K+ residents" />
-            <LegendRow color="#8b5cf6" label="2–5K" />
-            <LegendRow color="#a78bfa" label="1–2K" />
-            <LegendRow color="#c4b5fd" label="&lt;1K" />
+            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-2">Population (2024 ACS)</p>
+            <LegendRow color="#6366f1" label="Denver County (729K)" />
+            <LegendRow color="#8b5cf6" label="Aurora (402K)" />
+            <LegendRow color="#a78bfa" label="Lakewood (157K)" />
           </>
         )}
         {overlay === "under18" && (
           <>
-            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-2">Youth %</p>
-            <LegendRow color="#f97316" label="30%+" />
-            <LegendRow color="#fb923c" label="22–30%" />
-            <LegendRow color="#fdba74" label="15–22%" />
-            <LegendRow color="#374151" label="&lt;15%" />
+            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-2">Youth % (2024 ACS)</p>
+            <LegendRow color="#f97316" label="Aurora (22.6%)" />
+            <LegendRow color="#fdba74" label="Denver / Lakewood (~17%)" />
+            <LegendRow color="#374151" label="No data" />
           </>
         )}
         {showAmenities && (
