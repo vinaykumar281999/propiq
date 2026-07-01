@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
   fetchProperties, fetchMetros, Property, AddressPoint,
-  formatMoney, investmentScore, PERIODS,
+  formatMoney, investmentScore, PERIODS, badge, Badge,
 } from "@/lib/api";
 import NeighborhoodList from "@/components/NeighborhoodList";
 import MapView from "@/components/MapView";
@@ -29,6 +29,20 @@ const TimingAdvisor = dynamic(
 );
 
 const DEFAULT_METRO = "Denver, CO metro area";
+
+const ROI_FILTERS: { key: "ALL" | Badge; label: string }[] = [
+  { key: "ALL",  label: "All"  },
+  { key: "HOT",  label: "HOT"  },
+  { key: "WARM", label: "WARM" },
+  { key: "COOL", label: "COOL" },
+];
+
+const ROI_FILTER_ACTIVE_STYLE: Record<"ALL" | Badge, string> = {
+  ALL:  "bg-gradient-to-r from-emerald-500 to-cyan-400 text-black shadow-md shadow-emerald-900/40",
+  HOT:  "bg-emerald-500/20 text-emerald-400 border border-emerald-500/50",
+  WARM: "bg-amber-500/20 text-amber-400 border border-amber-500/50",
+  COOL: "bg-rose-500/20 text-rose-400 border border-rose-500/50",
+};
 
 function Skeleton({ className = "" }: { className?: string }) {
   return <div className={`animate-pulse rounded-lg bg-slate-700/40 ${className}`} />;
@@ -79,6 +93,7 @@ export default function Home() {
   const [selected, setSelected]           = useState<Property | null>(null);
   const [addressPin, setAddressPin]       = useState<AddressPoint | null>(null);
   const [search, setSearch]               = useState("");
+  const [roiFilter, setRoiFilter]         = useState<"ALL" | Badge>("ALL");
   const [searchFocused, setSearchFocused] = useState(false);
   const [calcPeriod, setCalcPeriod]         = useState(12);
   const [calcAmount, setCalcAmount]         = useState(500000);
@@ -128,6 +143,10 @@ export default function Home() {
   const filteredProperties = search
     ? visibleProperties.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()))
     : visibleProperties;
+
+  const roiFilteredProperties = roiFilter === "ALL"
+    ? filteredProperties
+    : filteredProperties.filter((p) => badge(p.roi_pct) === roiFilter);
 
   const count    = visibleProperties.length;
   const avgRoi   = count ? visibleProperties.reduce((s, p) => s + p.roi_pct, 0) / count : 0;
@@ -304,135 +323,153 @@ export default function Home() {
           </div>
         )}
 
-        {/* Scrollable area: neighborhood list + calculator + timing advisor + footer */}
-        <div className="flex-1 overflow-y-auto">
+        {/* Below the fixed header controls: a scrollable neighborhood list on
+            top, and a fixed-height detail panel (calculator, price cuts,
+            inventory, timing advisor, footer) pinned below it. The two scroll
+            independently so browsing the list never pushes the calculator
+            out of view. */}
+        <div className="flex-1 min-h-0 flex flex-col">
 
-          {/* Neighborhood list */}
-          {loading ? (
-            <div>
-              <div className="px-4 py-2 flex items-center justify-between">
-                <Skeleton className="h-2.5 w-24" />
-                <Skeleton className="h-2.5 w-12" />
+          {/* Neighborhood list — scrollable */}
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            {loading ? (
+              <div>
+                <div className="px-4 py-2 flex items-center justify-between">
+                  <Skeleton className="h-2.5 w-24" />
+                  <Skeleton className="h-2.5 w-12" />
+                </div>
+                {Array.from({ length: 8 }).map((_, i) => <NeighborhoodRowSkeleton key={i} />)}
               </div>
-              {Array.from({ length: 8 }).map((_, i) => <NeighborhoodRowSkeleton key={i} />)}
-            </div>
-          ) : error ? (
-            <div className="p-4">
-              <p className="text-xs text-red-400 bg-red-950/40 border border-red-800/50 rounded-xl px-4 py-3">{error}</p>
-            </div>
-          ) : (
-            <>
-              <div className="px-4 py-2 flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Neighborhoods</span>
-                <span className="text-[10px] text-slate-500">{filteredProperties.length} shown</span>
+            ) : error ? (
+              <div className="p-4">
+                <p className="text-xs text-red-400 bg-red-950/40 border border-red-800/50 rounded-xl px-4 py-3">{error}</p>
               </div>
-              <NeighborhoodList
-                properties={filteredProperties}
-                search=""
-                selected={selected}
-                onSelect={(p) => { setSelected(p); setAddressPin(null); }}
-              />
-            </>
-          )}
-
-          {/* Investment Calculator */}
-          {!loading && !error && (
-            <div className="border-t border-slate-800/60 px-4 pt-3 pb-4 bg-[#0F1322]/80">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Investment Calculator</p>
-              <div className="space-y-3">
-                <div>
-                  <label className="text-[10px] text-slate-400 block mb-1.5">Investment Amount</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm select-none">$</span>
-                    <input
-                      type="number"
-                      value={calcAmount}
-                      onChange={(e) => setCalcAmount(Math.max(0, parseInt(e.target.value) || 0))}
-                      className="w-full bg-[#161B30] border border-slate-700/60 text-slate-100 text-sm rounded-lg pl-7 pr-3 py-2 focus:outline-none focus:border-emerald-400/60 transition-colors"
-                      placeholder="500000"
-                    />
-                  </div>
+            ) : (
+              <>
+                <div className="px-4 py-2 flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Neighborhoods</span>
+                  <span className="text-[10px] text-slate-500">{roiFilteredProperties.length} shown</span>
                 </div>
 
-                <div>
-                  <label className="text-[10px] text-slate-400 block mb-1.5">Time Period</label>
-                  <div className="flex gap-1 flex-wrap">
-                    {PERIODS.map((p) => (
-                      <button
-                        key={p.months}
-                        onClick={() => setCalcPeriod(p.months)}
-                        className={`text-[10px] px-2.5 py-1 rounded-lg font-semibold transition-all ${
-                          calcPeriod === p.months
-                            ? "bg-gradient-to-r from-emerald-500 to-cyan-400 text-black shadow-md shadow-emerald-900/40"
-                            : "bg-[#161B30] text-slate-400 hover:text-slate-200 border border-slate-700/60"
-                        }`}
-                      >
-                        {p.short}
-                      </button>
-                    ))}
-                  </div>
+                {/* Quick ROI filter bar */}
+                <div className="px-4 pb-2.5 flex items-center gap-1.5">
+                  {ROI_FILTERS.map(({ key, label }) => (
+                    <button
+                      key={key}
+                      onClick={() => setRoiFilter(key)}
+                      className={`text-[10px] px-2.5 py-1 rounded-lg font-bold tracking-wide transition-all ${
+                        roiFilter === key
+                          ? ROI_FILTER_ACTIVE_STYLE[key]
+                          : "bg-[#161B30] text-slate-400 hover:text-slate-200 border border-slate-700/60"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
                 </div>
 
-                <div className={`rounded-xl p-3 border transition-all ${selected ? "bg-gradient-to-r from-emerald-950/50 to-cyan-950/40 border-emerald-800/40" : "bg-[#161B30] border-slate-700/60"}`}>
-                  <p className="text-[10px] text-slate-400 mb-0.5">
-                    {selected ? `${selected.name} · ` : ""}{calcLabel} return
-                  </p>
-                  <p className={`text-2xl font-black leading-tight ${selected ? "bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent" : "text-slate-600"}`}>
-                    {selected ? `+${formatMoney(calcReturn)}` : "—"}
-                  </p>
-                  {selected && (
-                    <div className="mt-2">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-[9px] text-slate-500">ROI score</span>
-                        <span className="text-[9px] font-semibold text-slate-400">{investmentScore(selected.roi_pct)}/100</span>
-                      </div>
-                      <div className="h-1 bg-slate-800 rounded-full overflow-hidden">
-                        <div
-                          className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-400 transition-all duration-700"
-                          style={{ width: `${investmentScore(selected.roi_pct)}%` }}
-                        />
-                      </div>
-                    </div>
-                  )}
-                  {!selected && (
-                    <p className="text-[10px] text-slate-600 mt-0.5">Select a neighborhood to calculate</p>
-                  )}
-                </div>
-
-                {/* Deep analysis CTA */}
-                {selected && selected.lat && selected.lng && (
-                  <button
-                    onClick={() => setShowEvaluator(true)}
-                    className="w-full mt-1 py-2.5 rounded-xl text-[11px] font-bold tracking-wide transition-all bg-gradient-to-r from-cyan-500/15 to-emerald-500/10 border border-cyan-500/30 text-cyan-400 hover:from-cyan-500/25 hover:to-emerald-500/20 hover:border-cyan-400/50 flex items-center justify-center gap-2"
-                  >
-                    <span>⚡</span> Deep Neighborhood Analysis
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Price Cut Tracker — shown when a neighborhood is selected */}
-          {!loading && !error && selected && <PriceCutCard property={selected} />}
-
-          {/* Inventory Velocity — shown when a neighborhood is selected */}
-          {!loading && !error && selected && <InventoryVelocityCard property={selected} />}
-
-          {/* Timing Advisor — shown when a neighborhood is selected */}
-          {!loading && !error && selected && (
-            <div className="border-t border-slate-800/60">
-              <TimingAdvisor property={selected} />
-            </div>
-          )}
-
-          {/* Footer */}
-          <div className="border-t border-slate-800/60 px-4 py-2">
-            <p className="text-[9px] text-slate-600 leading-relaxed">
-              Data: Redfin Jan–May 2026. Projections are estimates, not financial advice.
-            </p>
+                <NeighborhoodList
+                  properties={roiFilteredProperties}
+                  search=""
+                  selected={selected}
+                  onSelect={(p) => { setSelected(p); setAddressPin(null); }}
+                />
+              </>
+            )}
           </div>
 
-        </div>{/* end scrollable area */}
+          {/* Fixed bottom panel — calculator always visible, rest scrolls internally if tall */}
+          {!loading && !error && (
+            <div className="flex-none max-h-[46vh] overflow-y-auto border-t border-slate-800/60">
+
+              {/* Investment Calculator */}
+              <div className="px-4 pt-3 pb-4 bg-[#0F1322]/80">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-3">Investment Calculator</p>
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-[10px] text-slate-400 block mb-1.5">Investment Amount</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm select-none">$</span>
+                      <input
+                        type="number"
+                        value={calcAmount}
+                        onChange={(e) => setCalcAmount(Math.max(0, parseInt(e.target.value) || 0))}
+                        className="w-full bg-[#161B30] border border-slate-700/60 text-slate-100 text-sm rounded-lg pl-7 pr-3 py-2 focus:outline-none focus:border-emerald-400/60 transition-colors"
+                        placeholder="500000"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] text-slate-400 block mb-1.5">Time Period</label>
+                    <div className="flex gap-1 flex-wrap">
+                      {PERIODS.map((p) => (
+                        <button
+                          key={p.months}
+                          onClick={() => setCalcPeriod(p.months)}
+                          className={`text-[10px] px-2.5 py-1 rounded-lg font-semibold transition-all ${
+                            calcPeriod === p.months
+                              ? "bg-gradient-to-r from-emerald-500 to-cyan-400 text-black shadow-md shadow-emerald-900/40"
+                              : "bg-[#161B30] text-slate-400 hover:text-slate-200 border border-slate-700/60"
+                          }`}
+                        >
+                          {p.short}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className={`rounded-xl p-3 border transition-all ${selected ? "bg-gradient-to-r from-emerald-950/50 to-cyan-950/40 border-emerald-800/40" : "bg-[#161B30] border-slate-700/60"}`}>
+                    <p className="text-[10px] text-slate-400 mb-0.5">
+                      {selected ? `${selected.name} · ` : ""}{calcLabel} return
+                    </p>
+                    <p className={`text-2xl font-black leading-tight ${selected ? "bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent" : "text-slate-600"}`}>
+                      {selected ? `+${formatMoney(calcReturn)}` : "—"}
+                    </p>
+                    {selected && (
+                      <div className="mt-2">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[9px] text-slate-500">ROI score</span>
+                          <span className="text-[9px] font-semibold text-slate-400">{investmentScore(selected.roi_pct)}/100</span>
+                        </div>
+                        <div className="h-1 bg-slate-800 rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-cyan-400 transition-all duration-700"
+                            style={{ width: `${investmentScore(selected.roi_pct)}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                    {!selected && (
+                      <p className="text-[10px] text-slate-600 mt-0.5">Select a neighborhood to calculate</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Price Cut Tracker — shown when a neighborhood is selected */}
+              {selected && <PriceCutCard property={selected} />}
+
+              {/* Inventory Velocity — shown when a neighborhood is selected */}
+              {selected && <InventoryVelocityCard property={selected} />}
+
+              {/* Timing Advisor — shown when a neighborhood is selected */}
+              {selected && (
+                <div className="border-t border-slate-800/60">
+                  <TimingAdvisor property={selected} />
+                </div>
+              )}
+
+              {/* Footer */}
+              <div className="border-t border-slate-800/60 px-4 py-2">
+                <p className="text-[9px] text-slate-600 leading-relaxed">
+                  Data: Redfin Jan–May 2026. Projections are estimates, not financial advice.
+                </p>
+              </div>
+            </div>
+          )}
+
+        </div>{/* end list + fixed-panel column */}
       </aside>
 
       {/* ── RIGHT PANEL ─────────────────────────────────────────────────────── */}
@@ -451,6 +488,37 @@ export default function Home() {
             evaluationMarkers={evalMarkers}
             addressPin={addressPin}
           />
+        )}
+
+        {/* Deep Analysis CTA — top of the right panel, appears the moment a
+            neighborhood is selected, disappears once the evaluator opens */}
+        {!showEvaluator && selected && (
+          <div className="hidden md:block absolute top-4 left-4 z-[1500] w-[300px]">
+            <div className="backdrop-blur-md bg-slate-900/90 border border-slate-800/80 shadow-xl shadow-black/40 rounded-2xl p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <span
+                  className="w-2 h-2 rounded-full flex-none"
+                  style={{ background: { HOT: "#34d399", WARM: "#fbbf24", COOL: "#f43f5e" }[badge(selected.roi_pct)] }}
+                />
+                <p className="text-sm font-bold text-slate-100 truncate leading-tight">{selected.name}</p>
+              </div>
+              <p className="text-[11px] text-slate-400 mb-3">
+                {formatMoney(selected.price)} ·{" "}
+                <span className="text-emerald-400 font-semibold">+{selected.roi_pct.toFixed(1)}% ROI</span>
+                {" · "}Score {investmentScore(selected.roi_pct)}/100
+              </p>
+              {selected.lat && selected.lng ? (
+                <button
+                  onClick={() => setShowEvaluator(true)}
+                  className="propiq-glow-cta w-full py-3 rounded-xl text-[12px] font-black tracking-wide bg-gradient-to-r from-emerald-500 to-cyan-400 text-black hover:brightness-110 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                >
+                  <span>⚡</span> Deep Neighborhood Analysis
+                </button>
+              ) : (
+                <p className="text-[10px] text-slate-500">No coordinates available for deep analysis.</p>
+              )}
+            </div>
+          </div>
         )}
 
         {/* Desktop evaluator overlay — hidden on mobile */}
