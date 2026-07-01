@@ -11,6 +11,10 @@ export interface Property {
   h3_7: string | null;
   h3_9: string | null;
   h3_index: string | null;   // alias for h3_7 (backward compat)
+  price_drops: number | null;      // fraction (0-1) of homes with a price reduction
+  inventory: number | null;        // active listings
+  homes_sold: number | null;       // homes sold in the period
+  months_of_supply: number | null; // active listings / monthly sales rate
 }
 
 export interface Amenity {

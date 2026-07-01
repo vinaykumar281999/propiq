@@ -12,7 +12,8 @@ export async function GET(request: NextRequest) {
     sql`SELECT COUNT(*)::int AS count FROM neighborhoods`,
     sql`
       SELECT id, name, metro, price, expected_return,
-             days_on_market, lat, lng, h3_7, h3_9
+             days_on_market, lat, lng, h3_7, h3_9,
+             price_drops, inventory, homes_sold, months_of_supply
       FROM   neighborhoods
       ORDER  BY id
       LIMIT  ${limit}
@@ -37,6 +38,10 @@ export async function GET(request: NextRequest) {
     h3_7:            r.h3_7            as string | null,
     h3_9:            r.h3_9            as string | null,
     h3_index:        r.h3_7            as string | null,
+    price_drops:      r.price_drops      as number | null,
+    inventory:        r.inventory        as number | null,
+    homes_sold:       r.homes_sold       as number | null,
+    months_of_supply: r.months_of_supply as number | null,
   }));
 
   return NextResponse.json({ total, properties });
