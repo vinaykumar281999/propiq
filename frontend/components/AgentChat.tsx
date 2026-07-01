@@ -77,7 +77,7 @@ async function fetchModel(
   timeoutMs = 60000,
 ): Promise<{ answer: string; tools_called: string[]; ms: number; isError?: boolean }> {
   const t0 = Date.now();
-  const label = !modelId ? "Claude"
+  const label = !modelId ? "AI Agent"
     : modelId.toLowerCase().includes("qwen") ? "Qwen"
     : "Llama";
 
@@ -267,9 +267,9 @@ export default function AgentChat({ neighborhood, lat, lng }: Props) {
 
       {/* ── Model header ───────────────────────────────────────────────────── */}
       {isRemote ? (
-        // Single Claude tab
+        // Single AI Agent tab (backend picks Claude / Groq / Ollama server-side)
         <div className="flex-none flex items-center gap-1.5 px-3 py-2 border-b-2 border-violet-500/40 border-b border-slate-800/60 bg-slate-900/50">
-          <span className="text-[10px] font-black uppercase tracking-wide text-violet-400">Claude</span>
+          <span className="text-[10px] font-black uppercase tracking-wide text-violet-400">AI Agent</span>
           <TimingBadge r={lastTurn?.llama} />
         </div>
       ) : (
@@ -344,7 +344,7 @@ export default function AgentChat({ neighborhood, lat, lng }: Props) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(input); } }}
-            placeholder={isRemote ? "Ask Claude…" : "Ask both models…"}
+            placeholder={isRemote ? "Ask the AI Agent…" : "Ask both models…"}
             disabled={loading}
             className="flex-1 min-w-0 bg-slate-800/60 border border-slate-700/60 text-slate-100 text-[12px] rounded-xl px-3 py-2.5 placeholder-slate-500 focus:outline-none focus:border-cyan-400/50 disabled:opacity-50 transition-colors"
           />

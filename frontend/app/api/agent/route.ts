@@ -278,6 +278,11 @@ interface GroqApiResponse {
   }>;
 }
 
+// ── Hugging Face types (OpenAI-compatible, same shape as Groq) ────────────────
+
+type HFMessage = GroqMessage;
+type HFApiResponse = GroqApiResponse;
+
 // ── Tool definitions ──────────────────────────────────────────────────────────
 
 const TOOLS: Anthropic.Tool[] = [
@@ -607,6 +612,61 @@ async function groqAgentLoop(
   return { answer: final_answer, tools_called };
 }
 
+function buildHFSystemPrompt(
+  neighborhood: string,
+  lat: number | null,
+  lng: number | null,
+  priceData: unknown,
+): string {
+  return `You are PropIQ, a real estate assistant. This model does not support live tool calls, so you have been given ONE piece of pre-fetched data below — current price/ROI/days-on-market for ${neighborhood}.
+
+STRICT RULES:
+- Only use the pre-fetched data below. Never invent prices, ROIs, or distances.
+- If asked about schools, hospitals, amenities, mortgage math, or a different neighborhood, say that data isn't available in this simplified mode.
+- Keep answers concise: 2-4 sentences.
+
+Pre-fetched price data for ${neighborhood}${lat != null ? ` (coordinates: ${lat}, ${lng})` : ""}:
+${JSON.stringify(priceData)}`;
+}
+
+// HF's novita-hosted meta-llama/llama-3.1-8b-instruct rejects requests with a
+// "tools" param ("function calling not support"), so instead of an agentic
+// tool-use loop this pre-fetches price data once and embeds it as context.
+async function hfAgentLoop(
+  message: string,
+  history: SimpleMessage[],
+  neighborhood: string,
+  lat: number | null,
+  lng: number | null,
+): Promise<{ answer: string; tools_called: string[] }> {
+  const HF_URL = "https://router.huggingface.co/novita/v3/openai/chat/completions";
+  const model  = "meta-llama/llama-3.1-8b-instruct";
+
+  const priceData = await toolGetPriceData(neighborhood);
+
+  const messages: HFMessage[] = [
+    { role: "system", content: buildHFSystemPrompt(neighborhood, lat, lng, priceData) },
+    ...history.map((h) => ({ role: h.role as "user" | "assistant", content: h.content })),
+    { role: "user",   content: message },
+  ];
+
+  const res = await fetch(HF_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type":  "application/json",
+      "Authorization": `Bearer ${process.env.HF_API_KEY}`,
+    },
+    body: JSON.stringify({ model, messages, stream: false }),
+    signal: AbortSignal.timeout(55000),
+  });
+  if (!res.ok) throw new Error(`HF ${res.status}: ${await res.text()}`);
+
+  const data  = await res.json() as HFApiResponse;
+  const final_answer = data.choices?.[0]?.message?.content?.trim() ?? "";
+
+  return { answer: final_answer, tools_called: ["get_price_data"] };
+}
+
 // ── POST handler ──────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
@@ -628,19 +688,29 @@ export async function POST(req: NextRequest) {
   // Backend priority:
   //   requestedModel set  → always Ollama (it's an Ollama-specific model name)
   //   ANTHROPIC_API_KEY   → Claude
+  //   HF_API_KEY          → Hugging Face (free cloud Llama, replaces Ollama/Groq)
   //   GROQ_API_KEY        → Groq (free cloud Llama)
   //   else                → Ollama
   const hasAnthropic = !!process.env.ANTHROPIC_API_KEY && process.env.OLLAMA_FALLBACK !== "true";
+  const hasHF        = !!process.env.HF_API_KEY;
   const hasGroq      = !!process.env.GROQ_API_KEY;
   const forceOllama  = !!requestedModel;
 
   const tools_called: string[] = [];
   let final_answer = "";
-  let backend: "claude" | "groq" | "ollama" =
+  let backend: "claude" | "hf" | "groq" | "ollama" =
     forceOllama  ? "ollama" :
     hasAnthropic ? "claude" :
+    hasHF        ? "hf"     :
     hasGroq      ? "groq"   :
                    "ollama";
+
+  // Fallback chain used both when Claude runs out of credits and as the base priority
+  const fallbackFromClaude = async () => {
+    if (hasHF) return { backend: "hf" as const, result: await hfAgentLoop(message, history, neighborhood, lat, lng) };
+    if (hasGroq) return { backend: "groq" as const, result: await groqAgentLoop(message, history, neighborhood, lat, lng) };
+    return { backend: "ollama" as const, result: await ollamaAgentLoop(message, history, neighborhood, lat, lng, requestedModel) };
+  };
 
   try {
     let result: { answer: string; tools_called: string[] };
@@ -651,15 +721,15 @@ export async function POST(req: NextRequest) {
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : "";
         if (errMsg.includes("credit balance") || errMsg.includes("too low") || errMsg.includes("quota")) {
-          // Fallback: Groq if available, else Ollama
-          backend = hasGroq ? "groq" : "ollama";
-          result  = backend === "groq"
-            ? await groqAgentLoop(message, history, neighborhood, lat, lng)
-            : await ollamaAgentLoop(message, history, neighborhood, lat, lng, requestedModel);
+          const fallback = await fallbackFromClaude();
+          backend = fallback.backend;
+          result  = fallback.result;
         } else {
           throw err;
         }
       }
+    } else if (backend === "hf") {
+      result = await hfAgentLoop(message, history, neighborhood, lat, lng);
     } else if (backend === "groq") {
       result = await groqAgentLoop(message, history, neighborhood, lat, lng);
     } else {

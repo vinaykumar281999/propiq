@@ -8,3 +8,6 @@ frontend/.next/
 node_modules/
 *.duckdb
 *.db
+.vercel
+.env*
+*.tsbuildinfo
