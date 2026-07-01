@@ -35,6 +35,18 @@ SOURCE_URL = (
 DOWNLOAD_PATH = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "../data/.redfin_neighborhood_market_tracker.tsv000.gz")
 )
+# PRICE_DROPS is never populated at neighborhood granularity in the file above
+# (confirmed: 0 non-NA values across a 3M-row sample) — Redfin only computes it
+# at metro granularity or coarser. Pull that instead and join it onto each
+# neighborhood by metro, so the price-cut feature uses real (if less granular)
+# data instead of going permanently empty.
+METRO_SOURCE_URL = (
+    "https://redfin-public-data.s3.us-west-2.amazonaws.com/"
+    "redfin_market_tracker/redfin_metro_market_tracker.tsv000.gz"
+)
+METRO_DOWNLOAD_PATH = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "../data/.redfin_metro_market_tracker.tsv000.gz")
+)
 PROPERTY_TYPE_FILTER = "All Residential"
 MIN_HOMES_SOLD        = 5
 BATCH_SIZE            = 500
@@ -50,20 +62,20 @@ MIGRATIONS = [
 
 # ── Download ───────────────────────────────────────────────────────────────────
 
-def download(path: str) -> None:
-    head = requests.head(SOURCE_URL, timeout=30)
+def download(url: str, path: str) -> None:
+    head = requests.head(url, timeout=30)
     remote_size = int(head.headers.get("content-length", 0))
 
     if os.path.exists(path) and os.path.getsize(path) == remote_size and remote_size > 0:
         print(f"Using cached download at {path} ({remote_size / 1e9:.2f}GB, size matches remote).")
         return
 
-    print(f"Downloading {SOURCE_URL} ({remote_size / 1e9:.2f}GB) …")
+    print(f"Downloading {url} ({remote_size / 1e9:.2f}GB) …")
     os.makedirs(os.path.dirname(path), exist_ok=True)
     t0 = time.time()
     tmp_path = path + ".part"
     try:
-        with requests.get(SOURCE_URL, stream=True, timeout=120) as r:
+        with requests.get(url, stream=True, timeout=120) as r:
             r.raise_for_status()
             written = 0
             with open(tmp_path, "wb") as f:
@@ -84,12 +96,20 @@ def download(path: str) -> None:
 # ── Parsing ────────────────────────────────────────────────────────────────────
 
 def _parse_region(region: str) -> tuple[str, str] | None:
-    """Split "City, ST - Neighborhood Name" into (neighborhood_name, metro)."""
+    """Split "City, ST - Neighborhood Name" into (neighborhood_name, metro).
+
+    The source file's metro part is bare ("Denver, CO"), but the table's
+    existing convention (and the frontend's hardcoded default metro) is
+    "Denver, CO metro area" — normalise so a metro doesn't fragment into two
+    entries in the metro filter dropdown.
+    """
     if " - " not in region:
         return None
     metro_part, name = region.split(" - ", 1)
     name = name.strip()
     metro_part = metro_part.strip()
+    if metro_part and not metro_part.lower().endswith(("metro area", "micro area")):
+        metro_part += " metro area"
     return (name, metro_part) if name else None
 
 
@@ -153,21 +173,59 @@ def stream_latest_rows(path: str) -> dict[str, dict]:
             if expected_return <= 0:
                 continue
 
+            inventory = _num(row[idx["INVENTORY"]])
+            # Redfin's own MONTHS_OF_SUPPLY is never populated at neighborhood
+            # granularity either, so compute it from inventory / monthly sales
+            # rate directly (same formula, using fields that ARE available here).
+            months_of_supply = _num(row[idx["MONTHS_OF_SUPPLY"]])
+            if months_of_supply is None and inventory is not None and homes_sold > 0:
+                months_of_supply = inventory / homes_sold
+
             latest[name] = {
                 "period_end":       period_end,
                 "metro":            metro,
                 "price":            price,
                 "expected_return":  expected_return,
                 "days_on_market":   _num(row[idx["MEDIAN_DOM"]]),
-                "price_drops":      _num(row[idx["PRICE_DROPS"]]),
-                "inventory":        _num(row[idx["INVENTORY"]]),
+                "price_drops":      None,  # not available at neighborhood granularity; joined from metro-level data below
+                "inventory":        inventory,
                 "homes_sold":       homes_sold,
-                "months_of_supply": _num(row[idx["MONTHS_OF_SUPPLY"]]),
+                "months_of_supply": months_of_supply,
             }
 
     print(f"  Done scanning {n_rows / 1e6:.1f}M rows in {time.time() - t0:.0f}s "
           f"— {len(latest):,} neighborhoods kept.")
     return latest
+
+
+def stream_metro_price_drops(path: str) -> dict[str, float]:
+    """Latest PRICE_DROPS per metro (property type "All Residential"),
+    keyed by the same "City, ST metro area" convention used for neighborhoods.metro."""
+    latest: dict[str, tuple[str, float]] = {}
+    with gzip.open(path, "rt", newline="") as f:
+        reader = csv.reader(f, delimiter="\t", quotechar='"')
+        header = next(reader)
+        idx = {name: i for i, name in enumerate(header)}
+
+        for row in reader:
+            if row[idx["REGION_TYPE"]] != "metro":
+                continue
+            if row[idx["PROPERTY_TYPE"]] != PROPERTY_TYPE_FILTER:
+                continue
+            region = row[idx["REGION"]].strip()
+            if not region:
+                continue
+            price_drops = _num(row[idx["PRICE_DROPS"]])
+            if price_drops is None:
+                continue
+            period_end = row[idx["PERIOD_END"]]
+            existing = latest.get(region)
+            if existing and existing[0] >= period_end:
+                continue
+            latest[region] = (period_end, price_drops)
+
+    print(f"  {len(latest):,} metros with price-drop data.")
+    return {metro: v[1] for metro, v in latest.items()}
 
 
 # ── Neon upsert ────────────────────────────────────────────────────────────────
@@ -192,8 +250,12 @@ def upsert(conn_str: str, data: dict[str, dict]) -> tuple[int, int]:
     insert_rows: list[tuple] = []
     for name, d in data.items():
         if name in existing_ids:
+            # Don't touch metro on existing rows — the source file's metro
+            # string doesn't always match the app's existing convention for
+            # the same city, and overwriting it can fragment the metro filter
+            # (this happened once already: "Denver, CO metro area" -> "Denver, CO").
             update_rows.append((
-                d["metro"], d["price"], d["expected_return"], d["days_on_market"],
+                d["price"], d["expected_return"], d["days_on_market"],
                 d["price_drops"], d["inventory"], d["homes_sold"], d["months_of_supply"],
                 name,
             ))
@@ -211,7 +273,6 @@ def upsert(conn_str: str, data: dict[str, dict]) -> tuple[int, int]:
             cur,
             """
             UPDATE neighborhoods AS n SET
-                metro             = v.metro,
                 price             = v.price,
                 expected_return   = v.expected_return,
                 days_on_market    = v.days_on_market,
@@ -219,11 +280,16 @@ def upsert(conn_str: str, data: dict[str, dict]) -> tuple[int, int]:
                 inventory         = v.inventory,
                 homes_sold        = v.homes_sold,
                 months_of_supply  = v.months_of_supply
-            FROM (VALUES %s) AS v(metro, price, expected_return, days_on_market,
+            FROM (VALUES %s) AS v(price, expected_return, days_on_market,
                                    price_drops, inventory, homes_sold, months_of_supply, name)
             WHERE n.name = v.name
             """,
             batch,
+            # execute_values otherwise infers a bare VALUES list as all-text,
+            # which Postgres then refuses to assign to double-precision columns.
+            template="(%s::double precision, %s::double precision, %s::double precision, "
+                     "%s::double precision, %s::double precision, %s::double precision, "
+                     "%s::double precision, %s)",
         )
         pg.commit()
         updated += len(batch)
@@ -258,8 +324,20 @@ def main() -> None:
     if not conn_str:
         sys.exit("Usage: python3 refresh_redfin.py [neon_connection_string]  (or set DATABASE_URL)")
 
-    download(DOWNLOAD_PATH)
+    download(SOURCE_URL, DOWNLOAD_PATH)
     data = stream_latest_rows(DOWNLOAD_PATH)
+
+    print("\nFetching metro-level price-drop data (not available at neighborhood granularity) …")
+    download(METRO_SOURCE_URL, METRO_DOWNLOAD_PATH)
+    metro_price_drops = stream_metro_price_drops(METRO_DOWNLOAD_PATH)
+    matched = 0
+    for d in data.values():
+        pd = metro_price_drops.get(d["metro"])
+        if pd is not None:
+            d["price_drops"] = pd
+            matched += 1
+    print(f"  {matched:,}/{len(data):,} neighborhoods matched to a metro price-drop figure.")
+
     updated, inserted = upsert(conn_str, data)
 
     print(f"\nDone. {updated:,} neighborhoods updated, {inserted:,} new.")

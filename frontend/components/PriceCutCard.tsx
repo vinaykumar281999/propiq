@@ -26,6 +26,7 @@ export default function PriceCutCard({ property }: { property: Property }) {
   const hasData = property.price_drops != null;
   const pct = hasData ? Math.round((property.price_drops as number) * 1000) / 10 : 0;
   const { label, text, bg, border, blurb } = classify(pct);
+  const marketName = property.metro?.replace(/ metro area$/i, "") ?? "this market";
 
   return (
     <div className="border-t border-slate-800/60 px-4 pt-3 pb-4 bg-[#0F1322]/80">
@@ -34,7 +35,7 @@ export default function PriceCutCard({ property }: { property: Property }) {
         <div className={`rounded-xl p-3 border ${bg} ${border}`}>
           <div className="flex items-center justify-between gap-2">
             <p className="text-[11px] text-slate-300 leading-snug">
-              <span className="text-lg font-black text-slate-100">{pct}%</span> of homes have had price reductions
+              <span className="text-lg font-black text-slate-100">{pct}%</span> of homes in the {marketName} market have had price reductions
             </p>
             <span className={`flex-none text-[9px] font-bold uppercase tracking-wide px-2 py-1 rounded-full border ${text} ${bg} ${border}`}>
               {label}

@@ -13,3 +13,4 @@ node_modules/
 *.tsbuildinfo
 __pycache__/
 data/.redfin_neighborhood_market_tracker.tsv000.gz
+data/.redfin_metro_market_tracker.tsv000.gz
