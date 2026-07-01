@@ -214,6 +214,46 @@ function Signal({ label, value, sub, color }: { label: string; value: string; su
   );
 }
 
+// ── Seasonal warning banner ─────────────────────────────────────────────────
+// Peak buying season (Jun-Aug, 0-indexed 5-7) — prices historically run
+// higher and buyers have less negotiating leverage than in the fall.
+
+function isPeakSeason() {
+  const month = new Date().getMonth();
+  return month >= 5 && month <= 7;
+}
+
+function SeasonalWarningBanner() {
+  if (!isPeakSeason()) return null;
+  return (
+    <div className="rounded-xl px-4 py-3 border bg-amber-950/40 border-amber-700/40 flex items-start gap-2.5">
+      <span className="text-amber-400 text-sm flex-none mt-0.5">⚠</span>
+      <p className="text-[12px] text-amber-200 leading-relaxed">
+        <span className="font-bold">You&apos;re buying at peak season</span> — prices are typically
+        3-5% higher than winter. Consider waiting until Oct-Nov for more negotiating power.
+      </p>
+    </div>
+  );
+}
+
+// ── Copy link button ─────────────────────────────────────────────────────────
+
+function CopyLinkButton() {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      onClick={async () => {
+        await navigator.clipboard.writeText(window.location.href);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }}
+      className="text-[11px] font-semibold text-slate-400 hover:text-emerald-400 border border-slate-700/60 hover:border-emerald-500/40 rounded-lg px-3 py-1.5 transition-all flex items-center gap-1.5"
+    >
+      {copied ? "✓ Copied" : "🔗 Copy link"}
+    </button>
+  );
+}
+
 // ── Results ───────────────────────────────────────────────────────────────────
 
 function Results({ result }: { result: TimingAnalysis }) {
@@ -228,6 +268,8 @@ function Results({ result }: { result: TimingAnalysis }) {
   return (
     <div className="space-y-4 mt-8">
 
+      <SeasonalWarningBanner />
+
       {/* A — Verdict */}
       <div className={`rounded-2xl p-6 border bg-gradient-to-br ${cfg.bg} ${cfg.border}`}>
         <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
@@ -236,15 +278,18 @@ function Results({ result }: { result: TimingAnalysis }) {
             <p className={`text-4xl font-black leading-none ${cfg.text}`}>{cfg.label}</p>
             <p className="text-[13px] text-slate-400 mt-2">{cfg.sub}</p>
           </div>
-          <div className="text-right">
-            <p className="text-[10px] text-slate-500 mb-1">Expected price</p>
-            <p className="text-slate-300 text-sm font-semibold">
-              {fmt(mc.current_price)} <span className="text-slate-500">→</span>{" "}
-              <span className={cfg.text}>{fmt(mc.median_6mo)}</span>
-            </p>
-            <p className="text-[10px] text-slate-500 mt-1">
-              Range: {fmt(mc.p10_6mo)} – {fmt(mc.p90_6mo)}
-            </p>
+          <div className="text-right flex flex-col items-end gap-2">
+            <CopyLinkButton />
+            <div>
+              <p className="text-[10px] text-slate-500 mb-1">Expected price</p>
+              <p className="text-slate-300 text-sm font-semibold">
+                {fmt(mc.current_price)} <span className="text-slate-500">→</span>{" "}
+                <span className={cfg.text}>{fmt(mc.median_6mo)}</span>
+              </p>
+              <p className="text-[10px] text-slate-500 mt-1">
+                Range: {fmt(mc.p10_6mo)} – {fmt(mc.p90_6mo)}
+              </p>
+            </div>
           </div>
         </div>
         <ul className="space-y-2">
