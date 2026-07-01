@@ -718,6 +718,16 @@ STRICT RULES:
 - If asked about mortgage math or a different neighborhood, say that data isn't available in this simplified mode.
 - Keep answers concise: 2-4 sentences.
 
+HANDLING FOLLOW-UP QUESTIONS:
+- If the user asks "really?", "are you sure?", "why?", or "tell me more" —
+  do NOT repeat the same answer. Instead go deeper:
+  - List specific names and exact distances from the data
+  - Compare to what's typical for Denver neighborhoods
+  - Give a direct YES or NO recommendation with a reason
+  - Mention one potential concern or tradeoff
+  - Keep it conversational, like a knowledgeable friend explaining to someone
+    who is skeptical
+
 Pre-fetched data for ${neighborhood}${lat != null ? ` (coordinates: ${lat}, ${lng})` : ""}:
 
 Price/ROI data:
