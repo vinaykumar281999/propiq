@@ -55,7 +55,10 @@ function parseLocations(elements: OverpassEl[], originLat: number, originLng: nu
       const lng = el.lon ?? el.center?.lon;
       if (lat == null || lng == null) return null;
       const t = el.tags ?? {};
-      const name = t.name || t.amenity || t.leisure || t.shop || t.waterway || el.type;
+      // Check alternate OSM name keys before falling back to the raw type
+      // (e.g. a school tagged only with "operator" instead of "name").
+      const name = t.name || t["name:en"] || t.operator || t.brand
+        || t.amenity || t.leisure || t.shop || t.waterway || el.type;
       const rawType = t.amenity || t.leisure || t.shop || t.waterway || t.railway || "unknown";
       // OSM uses amenity=fuel; normalise to gas_station for display
       const type = rawType === "fuel" ? "gas_station" : rawType;

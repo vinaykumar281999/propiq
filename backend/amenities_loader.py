@@ -43,13 +43,18 @@ out center;
         # nodes have lat/lon directly; ways have a 'center' object
         lat = el.get("lat") or (el.get("center") or {}).get("lat")
         lng = el.get("lon") or (el.get("center") or {}).get("lon")
-        raw_type = el.get("tags", {}).get("amenity")
+        tags = el.get("tags", {})
+        raw_type = tags.get("amenity")
         atype = OSM_NORMALISE.get(raw_type, raw_type)  # fuel → gas_station
         if lat and lng and atype in AMENITY_TYPES:
+            # OSM tags the proper name under different keys depending on the
+            # mapper; check alternates before storing NULL (which renders as
+            # the generic type, e.g. "school", in the map tooltip).
+            name = tags.get("name") or tags.get("name:en") or tags.get("operator") or tags.get("brand")
             by_type[atype].append({
                 "osm_id": el["id"],
                 "type":   atype,
-                "name":   el.get("tags", {}).get("name"),
+                "name":   name,
                 "lat":    float(lat),
                 "lng":    float(lng),
                 "h3_9":   h3.latlng_to_cell(float(lat), float(lng), 9),

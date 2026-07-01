@@ -139,7 +139,11 @@ const FRIENDLY_TYPE: Record<string, string> = {
 };
 
 function friendlyLabel(t: Record<string, string | undefined>): string | null {
-  if (t.name) return t.name;
+  // OSM tags the proper name under a few different keys depending on how the
+  // mapper entered it; check all of them before falling back to a generic
+  // type label like "School".
+  const namedTag = t.name || t["name:en"] || t.operator || t.brand || t["addr:housename"];
+  if (namedTag) return namedTag;
   const rawType = t.amenity || t.leisure || t.shop || t.waterway || t.railway || t.natural;
   if (!rawType) return null;
   return (
