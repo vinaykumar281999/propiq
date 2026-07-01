@@ -701,21 +701,42 @@ function buildHFSystemPrompt(
   lat: number | null,
   lng: number | null,
   priceData: unknown,
+  schoolsData: unknown,
+  hospitalsData: unknown,
+  amenitiesData: unknown,
 ): string {
-  return `You are PropIQ, a real estate assistant. This model does not support live tool calls, so you have been given ONE piece of pre-fetched data below — current price/ROI/days-on-market for ${neighborhood}.
+  return `You are PropIQ, a real estate assistant. This model does not support live tool calls, so you have been given pre-fetched data below for ${neighborhood}:
+- Price/ROI data
+- Schools nearby
+- Healthcare nearby
+- Lifestyle amenities
 
 STRICT RULES:
+- Use this data to answer ANY question about the neighborhood.
+- Do not say data is unavailable if it's in the context below.
 - Only use the pre-fetched data below. Never invent prices, ROIs, or distances.
-- If asked about schools, hospitals, amenities, mortgage math, or a different neighborhood, say that data isn't available in this simplified mode.
+- If asked about mortgage math or a different neighborhood, say that data isn't available in this simplified mode.
 - Keep answers concise: 2-4 sentences.
 
-Pre-fetched price data for ${neighborhood}${lat != null ? ` (coordinates: ${lat}, ${lng})` : ""}:
-${JSON.stringify(priceData)}`;
+Pre-fetched data for ${neighborhood}${lat != null ? ` (coordinates: ${lat}, ${lng})` : ""}:
+
+Price/ROI data:
+${JSON.stringify(priceData)}
+
+Schools nearby:
+${JSON.stringify(schoolsData)}
+
+Healthcare nearby:
+${JSON.stringify(hospitalsData)}
+
+Lifestyle amenities:
+${JSON.stringify(amenitiesData)}`;
 }
 
 // HF's novita-hosted meta-llama/llama-3.1-8b-instruct rejects requests with a
 // "tools" param ("function calling not support"), so instead of an agentic
-// tool-use loop this pre-fetches price data once and embeds it as context.
+// tool-use loop this pre-fetches price, schools, healthcare, and amenities
+// data once and embeds it all as context.
 async function hfAgentLoop(
   message: string,
   history: SimpleMessage[],
@@ -726,10 +747,16 @@ async function hfAgentLoop(
   const HF_URL = "https://router.huggingface.co/novita/v3/openai/chat/completions";
   const model  = "meta-llama/llama-3.1-8b-instruct";
 
-  const priceData = await toolGetPriceData(neighborhood);
+  const hasCoords = lat != null && lng != null;
+  const [priceData, schoolsData, hospitalsData, amenitiesData] = await Promise.all([
+    toolGetPriceData(neighborhood),
+    hasCoords ? toolGetSchoolsNearby(lat, lng, 2) : { error: "No coordinates available" },
+    hasCoords ? toolGetHospitalsNearby(lat, lng, 3) : { error: "No coordinates available" },
+    hasCoords ? toolGetLifestyleAmenities(lat, lng, 1) : { error: "No coordinates available" },
+  ]);
 
   const messages: HFMessage[] = [
-    { role: "system", content: buildHFSystemPrompt(neighborhood, lat, lng, priceData) },
+    { role: "system", content: buildHFSystemPrompt(neighborhood, lat, lng, priceData, schoolsData, hospitalsData, amenitiesData) },
     ...history.map((h) => ({ role: h.role as "user" | "assistant", content: h.content })),
     { role: "user",   content: message },
   ];
@@ -748,7 +775,10 @@ async function hfAgentLoop(
   const data  = await res.json() as HFApiResponse;
   const final_answer = data.choices?.[0]?.message?.content?.trim() ?? "";
 
-  return { answer: final_answer, tools_called: ["get_price_data"] };
+  const tools_called = ["get_price_data"];
+  if (hasCoords) tools_called.push("get_schools_nearby", "get_hospitals_nearby", "get_lifestyle_amenities");
+
+  return { answer: final_answer, tools_called };
 }
 
 // ── POST handler ──────────────────────────────────────────────────────────────
