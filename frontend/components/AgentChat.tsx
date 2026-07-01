@@ -113,16 +113,19 @@ async function fetchModel(
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function Dots() {
+function Dots({ label }: { label?: string }) {
   return (
-    <div className="flex gap-1 items-center py-1">
-      {[0, 1, 2].map((i) => (
-        <span
-          key={i}
-          className="w-1 h-1 rounded-full bg-slate-500 inline-block animate-bounce"
-          style={{ animationDelay: `${i * 0.15}s` }}
-        />
-      ))}
+    <div className="flex gap-1.5 items-center py-1">
+      {label && <span className="text-[11px] text-slate-400 italic">{label}</span>}
+      <div className="flex gap-1 items-center">
+        {[0, 1, 2].map((i) => (
+          <span
+            key={i}
+            className="w-1 h-1 rounded-full bg-slate-500 inline-block animate-bounce"
+            style={{ animationDelay: `${i * 0.15}s` }}
+          />
+        ))}
+      </div>
     </div>
   );
 }
@@ -149,7 +152,7 @@ function ResponseCell({ r }: { r: ModelResponse }) {
       {r.loading ? (
         r.statusText
           ? <p className="text-[11px] text-slate-400 italic">{r.statusText}</p>
-          : <Dots />
+          : <Dots label="AI Agent is thinking…" />
       ) : (
         <>
           <ToolPills tools={r.tools} />

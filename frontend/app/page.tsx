@@ -30,6 +30,32 @@ const TimingAdvisor = dynamic(
 
 const DEFAULT_METRO = "Denver, CO metro area";
 
+function Skeleton({ className = "" }: { className?: string }) {
+  return <div className={`animate-pulse rounded-lg bg-slate-700/40 ${className}`} />;
+}
+
+function KpiCardSkeleton() {
+  return (
+    <div className="bg-[#161B30] border border-slate-800/60 rounded-xl p-3">
+      <Skeleton className="h-2.5 w-16 mb-2" />
+      <Skeleton className="h-5 w-12 mb-2" />
+      <Skeleton className="h-2 w-20" />
+    </div>
+  );
+}
+
+function NeighborhoodRowSkeleton() {
+  return (
+    <div className="px-4 py-2.5 flex items-center justify-between gap-3 border-b border-slate-800/40">
+      <div className="min-w-0 flex-1">
+        <Skeleton className="h-3 w-32 mb-1.5" />
+        <Skeleton className="h-2.5 w-20" />
+      </div>
+      <Skeleton className="h-4 w-10 flex-none" />
+    </div>
+  );
+}
+
 function KpiCard({
   label, value, sub, accent = false,
 }: {
@@ -179,6 +205,11 @@ export default function Home() {
         </div>
 
         {/* Address Search */}
+        {loading && !error && (
+          <div className="flex-none px-4 py-3 border-b border-slate-800/60">
+            <Skeleton className="h-9 w-full" />
+          </div>
+        )}
         {!loading && !error && (
           <div className="flex-none px-4 py-3 border-b border-slate-800/60">
             <AddressSearch
@@ -192,6 +223,14 @@ export default function Home() {
         )}
 
         {/* KPI 2×2 grid */}
+        {loading && !error && (
+          <div className="flex-none px-4 py-3 border-b border-slate-800/60">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2.5">Market Overview</p>
+            <div className="grid grid-cols-2 gap-2">
+              <KpiCardSkeleton /><KpiCardSkeleton /><KpiCardSkeleton /><KpiCardSkeleton />
+            </div>
+          </div>
+        )}
         {!loading && !error && (
           <div className="flex-none px-4 py-3 border-b border-slate-800/60">
             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2.5">Market Overview</p>
@@ -205,6 +244,11 @@ export default function Home() {
         )}
 
         {/* Neighborhood Search with autocomplete */}
+        {loading && !error && (
+          <div className="flex-none px-4 py-2.5 border-b border-slate-800/60">
+            <Skeleton className="h-9 w-full" />
+          </div>
+        )}
         {!loading && !error && (
           <div className="flex-none px-4 py-2.5 border-b border-slate-800/60">
             <div ref={searchContainerRef} className="relative">
@@ -262,9 +306,12 @@ export default function Home() {
 
           {/* Neighborhood list */}
           {loading ? (
-            <div className="flex flex-col items-center justify-center py-16 gap-3 text-slate-500">
-              <div className="w-7 h-7 border-2 border-slate-700 border-t-emerald-400 rounded-full animate-spin" />
-              <p className="text-xs">Loading markets…</p>
+            <div>
+              <div className="px-4 py-2 flex items-center justify-between">
+                <Skeleton className="h-2.5 w-24" />
+                <Skeleton className="h-2.5 w-12" />
+              </div>
+              {Array.from({ length: 8 }).map((_, i) => <NeighborhoodRowSkeleton key={i} />)}
             </div>
           ) : error ? (
             <div className="p-4">

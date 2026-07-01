@@ -204,7 +204,7 @@ export default function NeighborhoodEvaluator({
           <div className="p-4 space-y-3">
             <div className="flex items-center gap-3 text-slate-400">
               <div className="w-4 h-4 border-2 border-slate-700 border-t-emerald-400 rounded-full animate-spin flex-none" />
-              <p className="text-xs">Running neighborhood analysis…</p>
+              <p className="text-xs">Analyzing neighborhood…</p>
             </div>
             <Skeleton />
           </div>
