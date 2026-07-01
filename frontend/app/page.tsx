@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
-  fetchProperties, fetchMetros, Property,
+  fetchProperties, fetchMetros, Property, AddressPoint,
   formatMoney, investmentScore, PERIODS,
 } from "@/lib/api";
 import NeighborhoodList from "@/components/NeighborhoodList";
@@ -77,6 +77,7 @@ export default function Home() {
   const [metros, setMetros]               = useState<string[]>([]);
   const [selectedMetro, setSelectedMetro] = useState<string>(DEFAULT_METRO);
   const [selected, setSelected]           = useState<Property | null>(null);
+  const [addressPin, setAddressPin]       = useState<AddressPoint | null>(null);
   const [search, setSearch]               = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const [calcPeriod, setCalcPeriod]         = useState(12);
@@ -190,7 +191,7 @@ export default function Home() {
           <div className="relative">
             <select
               value={selectedMetro}
-              onChange={(e) => { setSelectedMetro(e.target.value); setSelected(null); setSearch(""); }}
+              onChange={(e) => { setSelectedMetro(e.target.value); setSelected(null); setSearch(""); setAddressPin(null); }}
               className="w-full appearance-none bg-[#161B30] border border-slate-700/60 text-slate-100 text-sm rounded-lg pl-3 pr-8 py-2 focus:outline-none focus:border-emerald-400/60 transition-colors cursor-pointer"
             >
               <option value="">All Markets</option>
@@ -214,9 +215,10 @@ export default function Home() {
           <div className="flex-none px-4 py-3 border-b border-slate-800/60">
             <AddressSearch
               allProperties={properties}
-              onSelect={(property, metro) => {
+              onSelect={(property, metro, addressPoint) => {
                 if (metro) setSelectedMetro(metro);
                 setSelected(property);
+                setAddressPin(addressPoint);
               }}
             />
           </div>
@@ -281,6 +283,7 @@ export default function Home() {
                       onMouseDown={(e) => {
                         e.preventDefault();
                         setSelected(p);
+                        setAddressPin(null);
                         setSearch("");
                         setSearchFocused(false);
                       }}
@@ -327,7 +330,7 @@ export default function Home() {
                 properties={filteredProperties}
                 search=""
                 selected={selected}
-                onSelect={setSelected}
+                onSelect={(p) => { setSelected(p); setAddressPin(null); }}
               />
             </>
           )}
@@ -443,9 +446,10 @@ export default function Home() {
             key={selectedMetro}
             properties={visibleProperties}
             selected={selected}
-            onSelect={setSelected}
+            onSelect={(p) => { setSelected(p); setAddressPin(null); }}
             visible={true}
             evaluationMarkers={evalMarkers}
+            addressPin={addressPin}
           />
         )}
 
@@ -466,7 +470,7 @@ export default function Home() {
         {selected && (
           <MobileBottomSheet
             selected={selected}
-            onClose={() => setSelected(null)}
+            onClose={() => { setSelected(null); setAddressPin(null); }}
             onEvaluationComplete={setEvalMarkers}
           />
         )}

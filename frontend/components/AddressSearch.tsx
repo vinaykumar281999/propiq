@@ -1,10 +1,10 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
-import { geocodeAddress, findNearestByH3, Property } from "@/lib/api";
+import { geocodeAddress, findNearestByH3, Property, AddressPoint } from "@/lib/api";
 
 interface Props {
   allProperties: Property[];
-  onSelect: (property: Property, metro: string | null) => void;
+  onSelect: (property: Property, metro: string | null, addressPoint: AddressPoint) => void;
 }
 
 interface Suggestion {
@@ -73,12 +73,18 @@ export default function AddressSearch({ allProperties, onSelect }: Props) {
     setMatching(true);
     setError(null);
     try {
-      const match = await findNearestByH3(parseFloat(s.lat), parseFloat(s.lon), allProperties);
+      const lat = parseFloat(s.lat);
+      const lng = parseFloat(s.lon);
+      const match = await findNearestByH3(lat, lng, allProperties);
       if (!match || match.gridDistance > 200) {
         setError("No neighborhood coverage near this address. Try Denver, CO.");
         return;
       }
-      onSelect(match.property, match.property.metro);
+      onSelect(match.property, match.property.metro, {
+        lat, lng,
+        label:   shortLabel(s.display_name),
+        h3Index: match.addressH3,
+      });
       setQuery("");
     } catch {
       setError("Something went wrong. Please try again.");

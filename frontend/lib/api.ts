@@ -187,6 +187,15 @@ export interface H3Match {
   property: Property;
   exact: boolean;
   gridDistance: number;
+  addressH3: string;
+}
+
+// A geocoded address pinned on the map, with its resolution-7 H3 cell.
+export interface AddressPoint {
+  lat: number;
+  lng: number;
+  label: string;
+  h3Index: string;
 }
 
 export async function findNearestByH3(
@@ -219,7 +228,7 @@ export async function findNearestByH3(
   }
 
   if (!best) return null;
-  return { property: best, exact: bestDist === 0, gridDistance: Math.round(bestDist) };
+  return { property: best, exact: bestDist === 0, gridDistance: Math.round(bestDist), addressH3: addrCell };
 }
 
 // ── Badges & scoring ──────────────────────────────────────────────────────────

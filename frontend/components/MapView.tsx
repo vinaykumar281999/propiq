@@ -4,6 +4,7 @@ import { useEffect, useRef, useMemo, useCallback, useState } from "react";
 import {
   Property,
   Amenity,
+  AddressPoint,
   DemographicsData,
   investmentScore,
   badge,
@@ -32,6 +33,7 @@ interface Props {
   onSelect: (p: Property) => void;
   visible: boolean;
   evaluationMarkers?: EvaluationMarker[];
+  addressPin?: AddressPoint | null;
 }
 
 type OverlayMode = "score" | "income" | "population" | "under18";
@@ -124,12 +126,14 @@ function evalMarkerEmoji(type: EvaluationMarker["markerType"]): string {
   return "📍";
 }
 
-export default function MapView({ properties, selected, onSelect, visible, evaluationMarkers }: Props) {
+export default function MapView({ properties, selected, onSelect, visible, evaluationMarkers, addressPin }: Props) {
   const containerRef     = useRef<HTMLDivElement>(null);
   const mapRef           = useRef<any | null>(null);
   const polygonsRef      = useRef<Map<number, any>>(new Map());
   const amenityLayerRef  = useRef<any | null>(null);
   const evalLayerRef     = useRef<any | null>(null);
+  const addressPinLayerRef = useRef<any | null>(null);
+  const pulsedPolyIdRef    = useRef<number | null>(null);
 
   const [overlay, setOverlay]     = useState<OverlayMode>("score");
   const [showAmenities, setShowAmenities] = useState(false);
@@ -285,6 +289,62 @@ export default function MapView({ properties, selected, onSelect, visible, evalu
     });
   }, [evaluationMarkers]);
 
+  // Fly to, pin, and pulse-highlight a geocoded address from Address Search
+  useEffect(() => {
+    if (!mapRef.current) return;
+    import("leaflet").then((mod) => {
+      const L = mod.default;
+
+      // Clear the previous pulse highlight
+      if (pulsedPolyIdRef.current != null) {
+        const prevPoly = polygonsRef.current.get(pulsedPolyIdRef.current);
+        prevPoly?.getElement()?.classList.remove("propiq-hex-pulse");
+        pulsedPolyIdRef.current = null;
+      }
+
+      // Clear the previous pin marker
+      if (addressPinLayerRef.current) {
+        addressPinLayerRef.current.remove();
+        addressPinLayerRef.current = null;
+      }
+
+      if (!addressPin) return;
+      const { lat, lng, label, h3Index } = addressPin;
+
+      const pinIcon = L.divIcon({
+        className: "propiq-address-pin",
+        html: `<svg width="28" height="36" viewBox="0 0 28 36" xmlns="http://www.w3.org/2000/svg">
+                 <path d="M14 0C6.3 0 0 6.3 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.3 21.7 0 14 0z" fill="#e879f9" stroke="#ffffff" stroke-width="2"/>
+                 <circle cx="14" cy="14" r="5" fill="#ffffff"/>
+               </svg>`,
+        iconSize:   [28, 36],
+        iconAnchor: [14, 36],
+        popupAnchor: [0, -32],
+      });
+
+      const marker = L.marker([lat, lng], { icon: pinIcon, zIndexOffset: 1000 });
+      marker.bindPopup(
+        `<div class="propiq-tip"><div class="propiq-tip-name">📍 ${label}</div></div>`,
+        { className: "propiq-popup" },
+      );
+      marker.addTo(mapRef.current);
+      addressPinLayerRef.current = marker;
+
+      mapRef.current.flyTo([lat, lng], 14, { duration: 1.2 });
+
+      // Pulse-glow the hexagon that contains the address, if it's a mapped neighborhood
+      if (h3Index) {
+        const match = indexed.find((p) => (p.h3_7 || p.h3_index) === h3Index);
+        const poly  = match ? polygonsRef.current.get(match.id) : null;
+        const el    = poly?.getElement();
+        if (el && match) {
+          el.classList.add("propiq-hex-pulse");
+          pulsedPolyIdRef.current = match.id;
+        }
+      }
+    });
+  }, [addressPin, indexed]);
+
   // Initialise Leaflet map once on mount
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -374,6 +434,8 @@ export default function MapView({ properties, selected, onSelect, visible, evalu
         mapRef.current  = null;
         amenityLayerRef.current = null;
         evalLayerRef.current = null;
+        addressPinLayerRef.current = null;
+        pulsedPolyIdRef.current = null;
         polygonsRef.current.clear();
       }
     };

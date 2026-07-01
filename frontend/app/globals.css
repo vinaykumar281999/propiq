@@ -78,3 +78,24 @@ html, body {
   50%       { box-shadow: 0 0 8px 3px rgba(52, 211, 153, 0.2); }
 }
 .hot-pulse { animation: pulse-glow 2s ease-in-out infinite; }
+
+/* Address pin popup (bindPopup, not bindTooltip — needs pointer events for its close button) */
+.propiq-popup .leaflet-popup-content-wrapper {
+  background: rgba(15, 19, 34, 0.96) !important;
+  border: 1px solid rgba(30, 41, 59, 0.8) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.7) !important;
+  backdrop-filter: blur(12px);
+}
+.propiq-popup .leaflet-popup-tip { background: rgba(15, 19, 34, 0.96) !important; }
+.propiq-popup .leaflet-popup-close-button { color: #94a3b8 !important; }
+
+/* Address search pin marker — plain SVG icon, no default Leaflet div-icon box */
+.propiq-address-pin { background: transparent !important; border: none !important; }
+
+/* Pulse-glow highlight on the H3 hexagon containing a searched address */
+@keyframes hex-pulse {
+  0%, 100% { filter: drop-shadow(0 0 3px rgba(232, 121, 249, 0.9)); }
+  50%       { filter: drop-shadow(0 0 12px rgba(232, 121, 249, 1)); }
+}
+.propiq-hex-pulse { animation: hex-pulse 1.4s ease-in-out infinite; }
