@@ -10,6 +10,7 @@ import NeighborhoodList from "@/components/NeighborhoodList";
 import MapView from "@/components/MapView";
 import AddressSearch from "@/components/AddressSearch";
 import PriceCutCard from "@/components/PriceCutCard";
+import InventoryVelocityCard from "@/components/InventoryVelocityCard";
 import type { EvaluationMarker } from "@/app/api/evaluate/route";
 
 const NeighborhoodEvaluator = dynamic(
@@ -363,6 +364,9 @@ export default function Home() {
 
           {/* Price Cut Tracker — shown when a neighborhood is selected */}
           {!loading && !error && selected && <PriceCutCard property={selected} />}
+
+          {/* Inventory Velocity — shown when a neighborhood is selected */}
+          {!loading && !error && selected && <InventoryVelocityCard property={selected} />}
 
           {/* Timing Advisor — shown when a neighborhood is selected */}
           {!loading && !error && selected && (
