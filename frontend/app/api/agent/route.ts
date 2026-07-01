@@ -125,6 +125,59 @@ async function toolGetPriceData(neighborhood: string) {
   }
 }
 
+async function toolGetPriceCuts(neighborhood: string) {
+  try {
+    const sql = neon(process.env.DATABASE_URL!);
+    const rows = await sql`
+      SELECT name, price_drops
+      FROM neighborhoods
+      WHERE name ILIKE '%' || ${neighborhood} || '%'
+      ORDER BY name
+      LIMIT 3
+    `;
+    if (!rows.length) return { error: `No data found for "${neighborhood}"` };
+    const results = rows.map((r: Record<string, unknown>) => ({
+      name: r.name,
+      price_drops_pct: r.price_drops != null
+        ? Math.round((r.price_drops as number) * 1000) / 10
+        : null,
+    }));
+    return { results };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { error: `Database error: ${msg}` };
+  }
+}
+
+async function toolGetInventory(neighborhood: string) {
+  try {
+    const sql = neon(process.env.DATABASE_URL!);
+    const rows = await sql`
+      SELECT name, inventory, homes_sold, months_of_supply
+      FROM neighborhoods
+      WHERE name ILIKE '%' || ${neighborhood} || '%'
+      ORDER BY name
+      LIMIT 3
+    `;
+    if (!rows.length) return { error: `No data found for "${neighborhood}"` };
+    const results = rows.map((r: Record<string, unknown>) => {
+      const mos = r.months_of_supply as number | null;
+      const market = mos == null ? null : mos < 2 ? "hot" : mos <= 4 ? "balanced" : "buyer's market";
+      return {
+        name: r.name,
+        inventory: r.inventory,
+        homes_sold: r.homes_sold,
+        months_of_supply: mos != null ? Math.round(mos * 10) / 10 : null,
+        market_read: market,
+      };
+    });
+    return { results };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { error: `Database error: ${msg}` };
+  }
+}
+
 async function toolGetSchoolsNearby(lat: number, lng: number, radius_km: number) {
   const r = Math.min(radius_km * 1000, 3000);
   const q = `[out:json][timeout:18];
@@ -379,6 +432,28 @@ const TOOLS: Anthropic.Tool[] = [
       required: ["neighborhood_a", "neighborhood_b"],
     },
   },
+  {
+    name: "get_price_cuts",
+    description: "Get the percentage of homes with price reductions (price cut rate) for a neighborhood from the database.",
+    input_schema: {
+      type: "object",
+      properties: {
+        neighborhood: { type: "string", description: "Name of the Denver neighborhood" },
+      },
+      required: ["neighborhood"],
+    },
+  },
+  {
+    name: "get_inventory",
+    description: "Get active listing inventory, homes sold, and months-of-supply (a market velocity read: hot / balanced / buyer's market) for a neighborhood from the database.",
+    input_schema: {
+      type: "object",
+      properties: {
+        neighborhood: { type: "string", description: "Name of the Denver neighborhood" },
+      },
+      required: ["neighborhood"],
+    },
+  },
 ];
 
 // ── Ollama tool schemas (OpenAI-compatible format) ────────────────────────────
@@ -416,6 +491,10 @@ async function executeTool(name: string, input: Record<string, unknown>): Promis
       );
     case "compare_neighborhoods":
       return toolCompareNeighborhoods(input.neighborhood_a as string, input.neighborhood_b as string);
+    case "get_price_cuts":
+      return toolGetPriceCuts(input.neighborhood as string);
+    case "get_inventory":
+      return toolGetInventory(input.neighborhood as string);
     default:
       return { error: `Unknown tool: ${name}` };
   }
@@ -434,6 +513,8 @@ RULES:
 - For mortgage or budget questions → call calculate_mortgage (use the neighborhood price from get_price_data if needed).
 - For neighborhood comparisons → call compare_neighborhoods.
 - For "what makes it special" or premium features → call get_premium_factors.
+- For questions about price cuts, reductions, or negotiating leverage → call get_price_cuts.
+- For questions about inventory, supply, or how fast the market is moving → call get_inventory.
 - Keep final answers concise: 2–4 sentences. Always cite specific numbers from tool results.
 - Be direct and actionable: clearly recommend or caution the investor.
 - Format numbers naturally (e.g. "$720K", "13.4% ROI", "0.3km away").
