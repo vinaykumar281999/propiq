@@ -165,7 +165,7 @@ function MonteCarloChart({ histogram, currentPrice }: { histogram: HistogramBin[
 
 function SectionCard({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={`bg-[#0F1322]/80 border border-slate-800/60 rounded-2xl p-5 ${className}`}>
+    <div className={`bg-[#0F1322]/80 border border-slate-800/60 rounded-2xl p-4 sm:p-5 ${className}`}>
       {children}
     </div>
   );
@@ -179,9 +179,9 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 function Row({ label, value, valueClass = "text-slate-200" }: { label: string; value: string; valueClass?: string }) {
   return (
-    <div className="flex items-center justify-between py-2 border-b border-slate-800/40 last:border-0">
-      <span className="text-[12px] text-slate-400">{label}</span>
-      <span className={`text-[12px] font-semibold ${valueClass}`}>{value}</span>
+    <div className="flex items-center justify-between gap-3 py-2 border-b border-slate-800/40 last:border-0">
+      <span className="text-[12px] text-slate-400 min-w-0">{label}</span>
+      <span className={`text-[12px] font-semibold shrink-0 whitespace-nowrap ${valueClass}`}>{value}</span>
     </div>
   );
 }
@@ -271,11 +271,11 @@ function Results({ result }: { result: TimingAnalysis }) {
       <SeasonalWarningBanner />
 
       {/* A — Verdict */}
-      <div className={`rounded-2xl p-6 border bg-gradient-to-br ${cfg.bg} ${cfg.border}`}>
+      <div className={`rounded-2xl p-4 sm:p-6 border bg-gradient-to-br ${cfg.bg} ${cfg.border}`}>
         <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-1">Timing Verdict · {n.name}</p>
-            <p className={`text-4xl font-black leading-none ${cfg.text}`}>{cfg.label}</p>
+            <p className={`text-3xl sm:text-4xl font-black leading-none ${cfg.text}`}>{cfg.label}</p>
             <p className="text-[13px] text-slate-400 mt-2">{cfg.sub}</p>
           </div>
           <div className="text-right flex flex-col items-end gap-2">
@@ -495,9 +495,9 @@ export default function TimingPage() {
 
       {/* Header */}
       <header className="border-b border-slate-800/60 bg-[#0F1322]/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link href="/" className="flex items-center gap-2.5 group">
+        <div className="max-w-4xl mx-auto px-3 sm:px-4 py-3 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <Link href="/" className="flex items-center gap-2 sm:gap-2.5 group flex-none">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-400 to-cyan-400 flex items-center justify-center font-black text-sm text-black">
                 P
               </div>
@@ -505,22 +505,22 @@ export default function TimingPage() {
                 PropIQ
               </span>
             </Link>
-            <span className="text-slate-700">/</span>
-            <span className="text-[13px] font-semibold text-slate-300">Timing Advisor</span>
+            <span className="text-slate-700 hidden sm:inline">/</span>
+            <span className="text-[13px] font-semibold text-slate-300 hidden sm:inline truncate">Timing Advisor</span>
           </div>
           <Link
             href="/"
-            className="text-[11px] font-semibold text-slate-400 hover:text-emerald-400 border border-slate-700/60 hover:border-emerald-500/40 rounded-lg px-3 py-1.5 transition-all"
+            className="flex-none text-[11px] font-semibold text-slate-400 hover:text-emerald-400 border border-slate-700/60 hover:border-emerald-500/40 rounded-lg px-2.5 sm:px-3 py-1.5 transition-all whitespace-nowrap"
           >
-            ← Back to Map
+            ← Back
           </Link>
         </div>
       </header>
 
       {/* Hero */}
-      <div className="max-w-4xl mx-auto px-4 pt-10 pb-6">
+      <div className="max-w-4xl mx-auto px-4 pt-8 sm:pt-10 pb-6">
         <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-400 mb-2">Monte Carlo Analysis</p>
-        <h1 className="text-3xl font-black leading-tight text-slate-100 mb-2">
+        <h1 className="text-2xl sm:text-3xl font-black leading-tight text-slate-100 mb-2">
           Should I Buy in{" "}
           <span className="bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">
             {location || "Denver"}
@@ -534,7 +534,7 @@ export default function TimingPage() {
 
       {/* Input form */}
       <div className="max-w-4xl mx-auto px-4 pb-4">
-        <div className="bg-[#0F1322]/80 border border-slate-800/60 rounded-2xl p-5 shadow-2xl shadow-black/40">
+        <div className="bg-[#0F1322]/80 border border-slate-800/60 rounded-2xl p-4 sm:p-5 shadow-2xl shadow-black/40">
 
           <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-4">Your Situation</p>
 
