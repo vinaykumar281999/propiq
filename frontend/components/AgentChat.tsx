@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { friendlyError } from "@/lib/errors";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -103,7 +104,7 @@ async function fetchModel(
     const ms = Date.now() - t0;
     const isTimeout = e instanceof Error && (e.name === "AbortError" || e.name === "TimeoutError");
     return {
-      answer:       isTimeout ? `${label} timed out — try again` : `Error: ${e instanceof Error ? e.message : e}`,
+      answer:       isTimeout ? `${label} timed out — try again` : friendlyError(e),
       tools_called: [],
       ms,
       isError:      true,
@@ -220,7 +221,7 @@ export default function AgentChat({ neighborhood, lat, lng }: Props) {
     const history = historyFromTurns(turns, "llama");
     fetchModel(question, undefined, history, neighborhood, lat, lng)
       .then((r) => update(id, "llama", { text: r.answer, tools: r.tools_called, loading: false, ms: r.ms, isError: r.isError }))
-      .catch((e) => update(id, "llama", { text: `Error: ${e instanceof Error ? e.message : e}`, tools: [], loading: false, ms: null, isError: true }))
+      .catch((e) => update(id, "llama", { text: friendlyError(e), tools: [], loading: false, ms: null, isError: true }))
       .finally(() => inputRef.current?.focus());
   };
 
@@ -247,11 +248,11 @@ export default function AgentChat({ neighborhood, lat, lng }: Props) {
       // Left tab: no model override when USE_GROQ (backend picks Groq); "llama3.2" otherwise
       fetchModel(question, USE_GROQ ? undefined : "llama3.2", llamaHistory, neighborhood, lat, lng)
         .then((r) => update(id, "llama", { text: r.answer, tools: r.tools_called, loading: false, ms: r.ms, isError: r.isError }))
-        .catch((e) => update(id, "llama", { text: `Error: ${e instanceof Error ? e.message : e}`, tools: [], loading: false, ms: null, isError: true })),
+        .catch((e) => update(id, "llama", { text: friendlyError(e), tools: [], loading: false, ms: null, isError: true })),
       // Right tab: always Ollama (llama3.2), 90s timeout for larger local model
       fetchModel(question, "llama3.2", qwenHistory, neighborhood, lat, lng, 90000)
         .then((r) => { clearTimeout(qwenSlowTimer); update(id, "qwen", { text: r.answer, tools: r.tools_called, loading: false, ms: r.ms, isError: r.isError, statusText: undefined }); })
-        .catch((e) => { clearTimeout(qwenSlowTimer); update(id, "qwen", { text: `Error: ${e instanceof Error ? e.message : e}`, tools: [], loading: false, ms: null, isError: true, statusText: undefined }); }),
+        .catch((e) => { clearTimeout(qwenSlowTimer); update(id, "qwen", { text: friendlyError(e), tools: [], loading: false, ms: null, isError: true, statusText: undefined }); }),
     ]);
     inputRef.current?.focus();
   };

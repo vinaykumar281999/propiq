@@ -6,6 +6,7 @@ import {
   BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip,
   ReferenceLine, ResponsiveContainer,
 } from "recharts";
+import { friendlyError } from "@/lib/errors";
 
 // ── Types (mirrors API response) ──────────────────────────────────────────────
 
@@ -484,7 +485,7 @@ export default function TimingPage() {
       setResult(data as TimingAnalysis);
       setTimeout(() => window.scrollTo({ top: 400, behavior: "smooth" }), 100);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Analysis failed");
+      setError(friendlyError(e));
     } finally {
       setLoading(false);
     }

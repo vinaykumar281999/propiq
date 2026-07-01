@@ -1,6 +1,7 @@
 "use client";
 import { useState, FormEvent } from "react";
 import { geocodeAddress, findNearestByH3, formatMoney, badge, BADGE_INFO, Property } from "@/lib/api";
+import { friendlyError } from "@/lib/errors";
 
 interface Props {
   allProperties: Property[];
@@ -58,10 +59,7 @@ export default function AddressLookup({ allProperties, onMatch }: Props) {
         addressLabel,
       });
     } catch (err) {
-      setStatus({
-        type: "error",
-        message: err instanceof Error ? err.message : "Something went wrong. Please try again.",
-      });
+      setStatus({ type: "error", message: friendlyError(err) });
     }
   }
 
