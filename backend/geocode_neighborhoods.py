@@ -44,16 +44,29 @@ def geocode(name: str, metro: str) -> tuple[float, float] | None:
 
 
 def run(metro_filter: str | None) -> None:
-    filter_sql = "WHERE h3_7 IS NULL"
+    filter_sql = "WHERE n.h3_7 IS NULL"
     params: list = []
     if metro_filter:
-        filter_sql += " AND metro = ?"
+        filter_sql += " AND n.metro = ?"
         params.append(metro_filter)
 
+    # Denver first, then other metros ordered by neighborhood count (a proxy
+    # for "major" metros — more Redfin-tracked neighborhoods = bigger metro).
+    query = f"""
+        SELECT n.id, n.name, n.metro
+        FROM neighborhoods n
+        LEFT JOIN (
+            SELECT metro, COUNT(*) AS cnt FROM neighborhoods GROUP BY metro
+        ) m ON n.metro = m.metro
+        {filter_sql}
+        ORDER BY
+            CASE WHEN n.metro LIKE 'Denver%' THEN 0 ELSE 1 END,
+            COALESCE(m.cnt, 0) DESC,
+            n.metro,
+            n.id
+    """
     with _lock:
-        props = get_db().execute(
-            f"SELECT id, name, metro FROM neighborhoods {filter_sql}", params
-        ).fetchall()
+        props = get_db().execute(query, params).fetchall()
 
     total = len(props)
     if total == 0:
